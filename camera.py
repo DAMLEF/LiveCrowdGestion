@@ -15,3 +15,6 @@ class Camera:
 
     def apply_offset(self, pos: tuple):
         return pos[0] + self.x_offset, pos[1] + self.y_offset
+
+    def revert_offset(self, pos: tuple):
+        return pos[0] - self.x_offset, pos[1] - self.y_offset

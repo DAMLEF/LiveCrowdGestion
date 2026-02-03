@@ -19,3 +19,6 @@ class World:
 
     def worldVector_to_pixelVector(self, vector: tuple):
         return self.world_to_pixel(vector[0]), self.world_to_pixel(vector[1])
+
+    def pixelVector_to_worldVector(self, vector: tuple):
+        return self.pixel_to_world(vector[0]), self.pixel_to_world(vector[1])

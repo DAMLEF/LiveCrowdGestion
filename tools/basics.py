@@ -3,7 +3,7 @@ import time
 
 from tools.other import *
 
-input_info = {"M_POS": (0, 0), "LMB": False, "MW": 0}
+input_info = {"M_POS": (0, 0), "LMB": False, "MW": 0, "MW_lastFrame": 0, "MW_2f": 0}
 input_stack = []
 input_last_time = {}
 input_check = {}
@@ -11,6 +11,9 @@ input_check = {}
 
 def input_actualise():
     input_info["M_POS"] = pygame.mouse.get_pos()
+    input_info["MW_2f"] = input_info["MW_lastFrame"]
+    input_info["MW_lastFrame"] = 0
+
 
 
 INPUT_DELAY = 0.5
@@ -57,6 +60,7 @@ def check_input(py_event: pygame.event) -> None:  # For each key pressed, we tur
             input_info["RMB"] = False
     elif py_event.type == pygame.MOUSEWHEEL:
         input_info["MW"] += py_event.y
+        input_info["MW_lastFrame"] = py_event.y
 
 def input_is_letters_or_numbers(key: int):
     if key_input.get(key) is not None:
