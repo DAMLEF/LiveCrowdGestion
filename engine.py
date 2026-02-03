@@ -60,19 +60,25 @@ class Engine:
         world_end_pos = self.world.get_world_size()
         pygame.draw.rect(self.screen, BLACK, (self.world_to_screen_pos(world_start_pos), self.world.worldVector_to_pixelVector(world_end_pos)), 2)
 
+        # Draw all entrances
+        for entrance in self.entrances:
+            points = self.world_to_screen_list(entrance.points)
+
+            pygame.draw.polygon(self.screen, GREEN, points)
+
         # Draw all obstacles
         for obstacle in self.obstacles:
-            points = self.world_to_screen_list(obstacle.obstacle_points)
+            points = self.world_to_screen_list(obstacle.points)
 
             pygame.draw.polygon(self.screen, BLACK, points)
 
         # Draw agents
         for agent in self.agents:
-            pygame.draw.circle(self.screen, LIGHT_RED, self.agents[0].pos, self.world.agent_radius)
+            pygame.draw.circle(self.screen, LIGHT_RED, agent.pos, self.world.agent_radius)
 
         # TODO : Debug
         if self.obstacles:
-            obstacles_world_position = self.world_to_screen_list(self.obstacles[0].obstacle_points)
+            obstacles_world_position = self.world_to_screen_list(self.obstacles[0].points)
             d, impact = nearest_impact_point_polygon(self.agents[0].pos, obstacles_world_position)
 
             pygame.draw.line(self.screen, GREEN, impact, self.agents[0].pos, 1)

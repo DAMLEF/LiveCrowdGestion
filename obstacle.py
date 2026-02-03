@@ -1,9 +1,12 @@
 import math
 
-class Obstacle:
+from polygon import Polygon
+
+
+class Obstacle(Polygon):
 
     def __init__(self):
-        self.obstacle_points = []
+        super().__init__("Obstacle")
 
         # Position information
         self.w = 30
@@ -37,5 +40,3 @@ class Obstacle:
 
         return rotated
 
-    def confirm_position(self, converted_points: list):
-        self.obstacle_points = converted_points
