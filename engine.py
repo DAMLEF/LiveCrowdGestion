@@ -29,6 +29,7 @@ class Engine:
         self.agents: list = []
 
         self.fps = Engine.FPS
+        self.delta = 0
 
 
     def display(self):
@@ -44,6 +45,8 @@ class Engine:
     def actualise(self):
         input_actualise()
 
+        self.delta = self.clock.get_time() / 1000
+
         # We move the camera within the window space when the user presses the movement keys.
         camera_vector = [0, 0]
         if input_info.get(pygame.K_z):
@@ -55,7 +58,7 @@ class Engine:
         if input_info.get(pygame.K_d):
             camera_vector[0] += 1
 
-        self.camera.move(tuple(camera_vector))
+        self.camera.move(tuple(camera_vector), self.delta)
 
         if Engine.FPS_DEBUG:
             pygame.display.set_caption(f"{Engine.WINDOW_NAME} - FPS : {self.clock.get_fps()}")
@@ -66,8 +69,6 @@ class Engine:
         # We take a position in world space (expressed in meters) and map it to screen space for rendering.
         pixel_pos = self.world.worldVector_to_pixelVector(pos)
         return self.camera.apply_offset(pixel_pos)
-
-
 
     def app_loop(self):
         running = True
@@ -84,6 +85,7 @@ class Engine:
                     running = False
 
             self.clock.tick(self.fps)
+
 
 
 
