@@ -2,16 +2,11 @@
 from engine import *
 # ----------- #
 
+# Creation of the app motor
 E = Engine()
 
+# Launch of the app main loop
+E.app_loop()
 
-running = True
-while running:
-    E.display()
-    E.actualise()
+pygame.quit()
 
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-
-    E.clock.tick(E.fps)
