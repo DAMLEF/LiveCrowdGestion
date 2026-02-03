@@ -32,7 +32,7 @@ class Engine:
 
         self.clock: pygame.time.Clock = pygame.time.Clock()
 
-        self.camera = Camera()
+        self.camera = Camera((300, 300))
 
         self.world = World()
 
@@ -45,6 +45,13 @@ class Engine:
         self.mouse_pos = (0, 0)
 
         # Editor parameters
+        self.edit = True
+
+        self.buttons = []
+        self.buttons.append(TextButton(10, 10, 100, 30, "Obstacle", BaseStyle(15, BLACK), "OBSTACLE"))
+        self.buttons.append(TextButton(120, 10, 100, 30, "Entrance", BaseStyle(15, BLACK), "ENTRANCE"))
+
+
         self.placement = Obstacle()
         self.placement_option = Engine.PLACEMENT_OPTIONS[Engine.PLACEMENT_ROTATION_OPTION]
 
@@ -83,13 +90,17 @@ class Engine:
 
             pygame.draw.line(self.screen, GREEN, impact, self.agents[0].pos, 1)
 
+        # Edit interface section
+        if self.edit:
 
+            # Draw of the in placement element
+            if self.placement is not None:
+                points = self.placement.get_rectangle_points(self.mouse_pos[0], self.mouse_pos[1])
 
-        # Draw of the in placement element
-        if self.placement is not None:
-            points = self.placement.get_rectangle_points(self.mouse_pos[0], self.mouse_pos[1])
+                pygame.draw.polygon(self.screen, BLACK, points)
 
-            pygame.draw.polygon(self.screen, BLACK, points)
+            for button in self.buttons:
+                button.draw(self.screen)
 
         pygame.display.flip()
 
@@ -135,9 +146,12 @@ class Engine:
                 self.obstacles.append(self.placement)
                 self.placement = None
 
+        if self.edit:
+            for button in self.buttons:
+                button.actualise()
+
         # TODO : Debug Section
         self.agents[0].pos = [self.mouse_pos[0], self.mouse_pos[1]]
-
 
         if Engine.FPS_DEBUG:
             pygame.display.set_caption(f"{Engine.WINDOW_NAME} - FPS : {self.clock.get_fps()}")
