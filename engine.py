@@ -1,13 +1,13 @@
 # Bibliothèques
-import pygame.examples.scroll
-from typing import List
+from typing import List, Tuple
 
-import world
 from tools.all import *
+from math_utils import *
 
 from world import *
 from camera import Camera
 from obstacle import Obstacle
+from agent import Agent
 
 # --------------- #
 
@@ -36,8 +36,9 @@ class Engine:
 
         self.world = World()
 
+        self.entrances: list =  []
         self.obstacles: list = []
-        self.agents: list = []
+        self.agents: list = [Agent()]
 
         self.fps = Engine.FPS
         self.delta = 0
@@ -64,6 +65,19 @@ class Engine:
             points = self.world_to_screen_list(obstacle.obstacle_points)
 
             pygame.draw.polygon(self.screen, BLACK, points)
+
+        # Draw agents
+        for agent in self.agents:
+            pygame.draw.circle(self.screen, LIGHT_RED, self.agents[0].pos, self.world.agent_radius)
+
+        # TODO : Debug
+        if self.obstacles:
+            obstacles_world_position = self.world_to_screen_list(self.obstacles[0].obstacle_points)
+            d, impact = nearest_impact_point_polygon(self.agents[0].pos, obstacles_world_position)
+
+            pygame.draw.line(self.screen, GREEN, impact, self.agents[0].pos, 1)
+
+
 
         # Draw of the in placement element
         if self.placement is not None:
@@ -115,12 +129,14 @@ class Engine:
                 self.obstacles.append(self.placement)
                 self.placement = None
 
+        # TODO : Debug Section
+        self.agents[0].pos = [self.mouse_pos[0], self.mouse_pos[1]]
+
+
         if Engine.FPS_DEBUG:
             pygame.display.set_caption(f"{Engine.WINDOW_NAME} - FPS : {self.clock.get_fps()}")
         else:
             pygame.display.set_caption(f"{Engine.WINDOW_NAME}")
-
-
 
     def world_to_screen_pos(self, pos: tuple):
         # We take a position in world space (expressed in meters) and map it to screen space for rendering.
@@ -145,6 +161,8 @@ class Engine:
             result.append(self.screen_to_world_pos(point))
 
         return result
+
+
 
     def app_loop(self):
         running = True
