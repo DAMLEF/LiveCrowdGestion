@@ -1,6 +1,6 @@
 class World:
     def __init__(self):
-        self.meter = 40
+        self.meter = 15
 
         self.agent_radius = 0.65
         self.agent_speed = 1.4

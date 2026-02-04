@@ -1,7 +1,9 @@
 import math
 
+from tools.colors import *
+
 class Polygon:
-    def __init__(self, t: str):
+    def __init__(self, t: str, color: tuple):
         self.points = []    # Points are considered in World Space (in meters)
 
         self.polygon_type = t
@@ -9,7 +11,9 @@ class Polygon:
         # Position information
         self.w = 30
         self.h = 50
-        self.angle = 30
+        self.angle = 0
+
+        self.color = color
 
     def get_rectangle_points(self, cx, cy):
         w = self.w

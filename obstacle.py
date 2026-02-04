@@ -1,11 +1,10 @@
-import math
+from polygon import *
 
-from polygon import Polygon
 
 
 class Obstacle(Polygon):
 
     def __init__(self):
-        super().__init__("Obstacle")
+        super().__init__("Obstacle", BLACK)
 
 
