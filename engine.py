@@ -1,6 +1,8 @@
 # Bibliothèques
 from typing import List, Tuple
 
+from entrance import Entrance
+from polygon import Polygon
 from tools.all import *
 from math_utils import *
 
@@ -48,11 +50,14 @@ class Engine:
         self.edit = True
 
         self.buttons = []
-        self.buttons.append(TextButton(10, 10, 100, 30, "Obstacle", BaseStyle(15, BLACK), "OBSTACLE"))
-        self.buttons.append(TextButton(120, 10, 100, 30, "Entrance", BaseStyle(15, BLACK), "ENTRANCE"))
 
+        action_obstacle_placement = lambda: self.set_placement_mode(Obstacle())
+        action_entrance_placement = lambda: self.set_placement_mode(Entrance())
 
-        self.placement = Obstacle()
+        self.buttons.append(TextButton(10, 10, 100, 30, "Obstacle", BaseStyle(15, BLACK), "OBSTACLE", action=action_obstacle_placement))
+        self.buttons.append(TextButton(120, 10, 100, 30, "Entrance", BaseStyle(15, BLACK), "ENTRANCE", action=action_entrance_placement))
+
+        self.placement: Polygon = None
         self.placement_option = Engine.PLACEMENT_OPTIONS[Engine.PLACEMENT_ROTATION_OPTION]
 
         self.placement_rotation_speed = 5   # degrees per frame
@@ -81,7 +86,7 @@ class Engine:
 
         # Draw agents
         for agent in self.agents:
-            pygame.draw.circle(self.screen, LIGHT_RED, agent.pos, self.world.agent_radius)
+            pygame.draw.circle(self.screen, LIGHT_RED, agent.pos, self.world.agent_radius * self.world.meter)
 
         # TODO : Debug
         if self.obstacles:
@@ -139,11 +144,15 @@ class Engine:
             elif self.placement_option == Engine.PLACEMENT_HEIGHT_EXTENSION:
                 self.placement.h += input_info["MW_2f"] * self.placement_length_extension_speed
 
-            if input_info.get("LMB"):
-                obstacle_world_positions = self.screen_to_world_list(self.placement.get_rectangle_points(self.mouse_pos[0], self.mouse_pos[1]))
+            if input_info.get("RMB"):
+                polygon_world_positions = self.screen_to_world_list(self.placement.get_rectangle_points(self.mouse_pos[0], self.mouse_pos[1]))
 
-                self.placement.confirm_position(obstacle_world_positions)
-                self.obstacles.append(self.placement)
+                self.placement.confirm_position(polygon_world_positions)
+
+                if self.placement.polygon_type == "Obstacle":
+                    self.obstacles.append(self.placement)
+                elif self.placement.polygon_type == "Entrance":
+                    self.entrances.append(self.placement)
                 self.placement = None
 
         if self.edit:
@@ -182,7 +191,8 @@ class Engine:
 
         return result
 
-
+    def set_placement_mode(self, placement_polygon: Polygon):
+        self.placement = placement_polygon
 
     def app_loop(self):
         running = True
