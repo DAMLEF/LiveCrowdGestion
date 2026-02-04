@@ -33,18 +33,22 @@ class Engine:
         self.screen = pygame.display.set_mode(Engine.SIZE)
 
         self.clock: pygame.time.Clock = pygame.time.Clock()
+        self.fps = Engine.FPS
+        self.delta = 0
+
+        self.mouse_pos = (0, 0)
 
         self.camera = Camera((300, 300))
 
         self.world = World()
 
+        # World Structure
         self.entrances: list =  []
         self.obstacles: list = []
+        self.spawn_point: list = []
+        self.objective: Polygon = None
         self.agents: list = [Agent()]
 
-        self.fps = Engine.FPS
-        self.delta = 0
-        self.mouse_pos = (0, 0)
 
         # Editor parameters
         self.edit = True
@@ -54,8 +58,10 @@ class Engine:
         action_obstacle_placement = lambda: self.set_placement_mode(Obstacle())
         action_entrance_placement = lambda: self.set_placement_mode(Entrance())
 
-        self.buttons.append(TextButton(10, 10, 100, 30, "Obstacle", BaseStyle(15, BLACK), "OBSTACLE", action=action_obstacle_placement))
-        self.buttons.append(TextButton(120, 10, 100, 30, "Entrance", BaseStyle(15, BLACK), "ENTRANCE", action=action_entrance_placement))
+        self.buttons.append(TextButton(10, 10, 110, 30, "Obstacle", BaseStyle(15, BLACK), "OBSTACLE", action=action_obstacle_placement, reset_input=True))
+        self.buttons.append(TextButton(130, 10, 110, 30, "Entrance", BaseStyle(15, BLACK), "ENTRANCE", action=action_entrance_placement, reset_input=True))
+        self.buttons.append(TextButton(250, 10, 110, 30, "Obstacle", BaseStyle(15, BLACK), "SPAWN POINT", reset_input=True))
+        self.buttons.append(TextButton(370, 10, 110, 30, "Entrance", BaseStyle(15, BLACK), "OBJECTIVE", reset_input=True))
 
         self.placement: Polygon = None
         self.placement_option = Engine.PLACEMENT_OPTIONS[Engine.PLACEMENT_ROTATION_OPTION]
@@ -107,6 +113,10 @@ class Engine:
             for button in self.buttons:
                 button.draw(self.screen)
 
+            # Draw Graphic scale
+            pygame.draw.rect(self.screen, LIGHT_GREY, (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.95, self.world.meter, 5))
+            self.screen.blit(BaseStyle(10, LIGHT_GREY).render("Meter"), (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.95 + 10))
+
         pygame.display.flip()
 
     def actualise(self):
@@ -144,7 +154,7 @@ class Engine:
             elif self.placement_option == Engine.PLACEMENT_HEIGHT_EXTENSION:
                 self.placement.h += input_info["MW_2f"] * self.placement_length_extension_speed
 
-            if input_info.get("RMB"):
+            if input_info.get("LMB"):
                 polygon_world_positions = self.screen_to_world_list(self.placement.get_rectangle_points(self.mouse_pos[0], self.mouse_pos[1]))
 
                 self.placement.confirm_position(polygon_world_positions)
@@ -153,6 +163,7 @@ class Engine:
                     self.obstacles.append(self.placement)
                 elif self.placement.polygon_type == "Entrance":
                     self.entrances.append(self.placement)
+
                 self.placement = None
 
         if self.edit:

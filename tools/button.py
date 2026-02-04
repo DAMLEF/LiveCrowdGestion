@@ -14,16 +14,18 @@ pygame.font.init()
 class Button:
     lmb_pressed = False
 
-    def __init__(self, x: float, y: float, width: int, height: int, name: str, action=lambda: None):
+    def __init__(self, x: float, y: float, width: int, height: int, name: str, action=lambda: None, reset_input: bool = False):
 
-        self.x = x
-        self.y = y
+        self.x: float = x
+        self.y: float = y
 
-        self.name = name
+        self.name: str = name
         self.rect = pygame.Rect([x, y, width, height])  # Rectangle position
         self.action = action
 
-        self.pressed = False
+        self.pressed: bool = False
+
+        self.reset_input: bool = reset_input
 
     def draw(self, window: pygame.Surface):
 
@@ -45,6 +47,10 @@ class Button:
         if self.is_pressed():
             if not self.pressed:
                 self.pressed = True
+
+                if self.reset_input:
+                    input_info["LMB"] = False
+                    
                 return self.action()
         else:
             self.pressed = False
@@ -52,8 +58,8 @@ class Button:
 
 class TextButton(Button):
     def __init__(self, x: float, y: float, width: int, height: int, name: str, style: TextStyle, text: str, center=True,
-                 action=lambda: None):
-        super().__init__(x, y, width, height, name, action)
+                 action=lambda: None, reset_input: bool = False):
+        super().__init__(x, y, width, height, name, action, reset_input)
 
         self.text = text
         self.style = style
