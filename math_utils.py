@@ -1,7 +1,26 @@
-from typing import Tuple, List
+from typing import Tuple, List, Any, Union
 
 import math
 
+
+# Functions
+def ramp(x: float) -> float:
+    return max(0., x)
+
+# Vector treatment
+def norm(vector: List[Any]) -> float:
+    return math.sqrt(vector[0] ** 2 + vector[1] ** 2)
+
+def normalize(vector: List[Any]) -> List[Union[float, Any]]:
+    n = norm(vector)
+    return [vector[0] / n, vector[1] / n ]
+
+def dot(vector: List[Any], other: List[Any]) -> Any:
+    return vector[0] * other[0] + vector[1] * other[1]
+
+# ------------------------------------------------
+
+# Polygon treatment
 def distance_point_to_segment(point: tuple, A: tuple, B: tuple) -> Tuple[float, tuple]:
     """
     Returns the minimum distance between point P and the segment AB,

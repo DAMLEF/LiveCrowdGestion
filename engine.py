@@ -1,7 +1,9 @@
 # Bibliothèques
+import math
 from typing import List, Tuple
 
 import pygame.draw
+from PIL.ImageChops import screen
 
 from entrance import Entrance
 from polygon import Polygon
@@ -31,6 +33,18 @@ class Engine:
     PLACEMENT_OPTIONS = {PLACEMENT_ROTATION_OPTION: PLACEMENT_ROTATION_OPTION,
                          PLACEMENT_WIDTH_EXTENSION: PLACEMENT_WIDTH_EXTENSION,
                          PLACEMENT_HEIGHT_EXTENSION: PLACEMENT_HEIGHT_EXTENSION}
+
+    INPUT_CAMERA_LEFT = pygame.K_q
+    INPUT_CAMERA_RIGHT = pygame.K_d
+    INPUT_CAMERA_UP = pygame.K_z
+    INPUT_CAMERA_DOWN = pygame.K_s
+
+    INPUT_ROTATE_MODE_ITEM = pygame.K_r
+    INPUT_WIDTH_MODE_ITEM = pygame.K_w
+    INPUT_HEIGHT_MODE_ITEM = pygame.K_h
+
+
+
 
     def __init__(self):
         self.screen = pygame.display.set_mode(Engine.SIZE)
@@ -126,6 +140,17 @@ class Engine:
 
                 pygame.draw.polygon(self.screen, self.placement.color, points)
 
+                # Draw Interface value
+                ts = BaseStyle(15, LIGHT_GREY)
+
+                self.screen.blit(ts.render(f"WIDTH [{key_input[Engine.INPUT_WIDTH_MODE_ITEM]}] : {round(self.world.pixel_to_world(self.placement.w), 3)} m"), (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.45))
+                self.screen.blit(ts.render(
+                    f"HEIGHT [{key_input[Engine.INPUT_HEIGHT_MODE_ITEM]}] : {round(self.world.pixel_to_world(self.placement.h), 3)} m"),
+                                 (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.45 + 15))
+                self.screen.blit(ts.render(
+                    f"ROTATION [{key_input[Engine.INPUT_ROTATE_MODE_ITEM]}] : {round(self.world.pixel_to_world(self.placement.angle), 3)} °"),
+                                 (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.45 + 30))
+
             for button in self.buttons:
                 button.draw(self.screen)
 
@@ -141,15 +166,14 @@ class Engine:
         self.mouse_pos = input_info["M_POS"]
 
         # We move the camera within the window space when the user presses the movement keys.
-        # TODO: Manage KEY_INTERACTION
         camera_vector = [0, 0]
-        if input_info.get(pygame.K_z):
+        if input_info.get(Engine.INPUT_CAMERA_UP):
             camera_vector[1] += 1
-        if input_info.get(pygame.K_q):
+        if input_info.get(Engine.INPUT_CAMERA_LEFT):
             camera_vector[0] -= 1
-        if input_info.get(pygame.K_s):
+        if input_info.get(Engine.INPUT_CAMERA_DOWN):
             camera_vector[1] -= 1
-        if input_info.get(pygame.K_d):
+        if input_info.get(Engine.INPUT_CAMERA_RIGHT):
             camera_vector[0] += 1
 
         self.camera.move(tuple(camera_vector), self.delta)
@@ -164,11 +188,11 @@ class Engine:
 
             if self.placement is not None:
 
-                if input_info.get(pygame.K_r):
+                if input_info.get(Engine.INPUT_ROTATE_MODE_ITEM):
                     self.placement_option = Engine.PLACEMENT_OPTIONS[Engine.PLACEMENT_ROTATION_OPTION]
-                elif input_info.get(pygame.K_w):
+                elif input_info.get(Engine.INPUT_WIDTH_MODE_ITEM):
                     self.placement_option = Engine.PLACEMENT_OPTIONS[Engine.PLACEMENT_WIDTH_EXTENSION]
-                elif input_info.get(pygame.K_h):
+                elif input_info.get(Engine.INPUT_HEIGHT_MODE_ITEM):
                     self.placement_option = Engine.PLACEMENT_OPTIONS[Engine.PLACEMENT_HEIGHT_EXTENSION]
 
                 if self.placement_option == Engine.PLACEMENT_ROTATION_OPTION:
@@ -247,17 +271,57 @@ class Engine:
 
             objective_point = nearest_impact_point_polygon(a.pos, a.objective.points)[1]
 
-            agent_direction = objective_point[0] - a.pos[0], objective_point[1] - a.pos[1]
             # Normalize direction
-            agent_direction_norm = math.sqrt(agent_direction[0] ** 2 + agent_direction[1] ** 2)
-            agent_direction = [agent_direction[0] / agent_direction_norm, agent_direction[1] / agent_direction_norm]
+            agent_direction = normalize([objective_point[0] - a.pos[0], objective_point[1] - a.pos[1]])
 
-            driving_forces = [0, 0]
-            driving_forces[0] = (a.desired_velocity * agent_direction[0] - a.velocity[0])/a.reaction_time
-            driving_forces[1] = (a.desired_velocity * agent_direction[1] - a.velocity[1]) / a.reaction_time
+            driving_force = [0, 0]
+            driving_force[0] = (a.desired_velocity * agent_direction[0] - a.velocity[0])/a.reaction_time
+            driving_force[1] = (a.desired_velocity * agent_direction[1] - a.velocity[1]) / a.reaction_time
+
+            obstacle_force = [0, 0]
+            for obstacle in self.obstacles:
+                obstacle_impact_info = nearest_impact_point_polygon(a.pos, obstacle.points)
+
+                obstacle_impact_distance = obstacle_impact_info[0]
+                obstacle_impact_point = obstacle_impact_info[1]
+
+                obstacle_agent_direction = normalize([obstacle_impact_point[0] - a.pos[0], obstacle_impact_point[1] - a.pos[1]])
+
+                # Pushing
+                obstacle_force[0] += (a.repulsion_amplitude * math.exp((self.world.agent_radius - obstacle_impact_distance)/a.repulsion_characteristic_distance)
+                                      + a.contact_stiffness * ramp(self.world.agent_radius - obstacle_impact_distance)) * obstacle_agent_direction[0]
+                obstacle_force[1] += (a.repulsion_amplitude * math.exp((self.world.agent_radius - obstacle_impact_distance)/a.repulsion_characteristic_distance)
+                                      + a.contact_stiffness * ramp(self.world.agent_radius - obstacle_impact_distance)) * obstacle_agent_direction[1]
 
 
-            a.force = driving_forces
+                # Sliding
+                tangential_oa_direction = normalize([-obstacle_agent_direction[1], obstacle_agent_direction[0]])
+                sliding_dot = dot(a.velocity, tangential_oa_direction)
+
+                print(f"TANGENT : {tangential_oa_direction}")
+
+                obstacle_force[0] += a.sliding_friction_coefficient * ramp(self.world.agent_radius - obstacle_impact_distance) * sliding_dot * tangential_oa_direction[0]
+                obstacle_force[1] += a.sliding_friction_coefficient * ramp(self.world.agent_radius - obstacle_impact_distance) * sliding_dot * tangential_oa_direction[1]
+
+                #print(obstacle_force[0])
+                print(a.sliding_friction_coefficient * ramp(self.world.agent_radius - obstacle_impact_distance) * sliding_dot * tangential_oa_direction[0])
+                print(a.sliding_friction_coefficient * ramp(self.world.agent_radius - obstacle_impact_distance) * sliding_dot * tangential_oa_direction[1])
+
+
+            repulsive_force = [0, 0]
+
+            a.force = driving_force
+
+            damping_force = [0, 0]
+            # TODO
+            if norm(a.velocity) > a.damping_reverse_speed and False:
+                damping_force[0] -= a.gamma_damping * a.velocity[0]
+                damping_force[1] -= a.gamma_damping * a.velocity[1]
+
+
+            a.force[0] += obstacle_force[0]  + damping_force[0]
+            a.force[1] += obstacle_force[1] + damping_force[1]
+            print(a.pos)
             pass
 
 
