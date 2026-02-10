@@ -65,7 +65,7 @@ class Engine:
 
         # Simulation parameters
         self.agents_to_spawn = 500
-        self.time_between_agent_spawn = 2        # In sec
+        self.time_between_agent_spawn = 2  # In sec
         self.last_spawn_time = time.time()
 
         # Editor parameters
@@ -193,7 +193,7 @@ class Engine:
 
         if self.edit:
             if input_info.get(pygame.K_l):
-                self.edit = False
+                self.launch_simulation()
 
             if self.placement is not None:
 
@@ -287,6 +287,40 @@ class Engine:
     def set_placement_mode(self, placement_polygon: Polygon):
         self.placement = placement_polygon
 
+    def launch_simulation(self):
+        # We exit the Edit Mode
+        self.edit = False
+
+        # Adding the World Border as obstacles
+        left_border = Obstacle()
+        left_border.points.append((0, 0))
+        left_border.points.append((- 1, 0))
+        left_border.points.append((- 1, self.world.world_height))
+        left_border.points.append((0, self.world.world_height))
+
+        right_border = Obstacle()
+        right_border.points.append((self.world.world_width, 0))
+        right_border.points.append((self.world.world_width + 1, 0))
+        right_border.points.append((self.world.world_width + 1, self.world.world_height))
+        right_border.points.append((self.world.world_width, self.world.world_height))
+
+        top_border = Obstacle()
+        top_border.points.append((0, 0))
+        top_border.points.append((self.world.world_width, 0))
+        top_border.points.append((self.world.world_width, -1))
+        top_border.points.append((0, -1))
+
+        bottom_border = Obstacle()
+        bottom_border.points.append((0, self.world.world_height))
+        bottom_border.points.append((self.world.world_width, self.world.world_height))
+        bottom_border.points.append((self.world.world_width, self.world.world_height + 1))
+        bottom_border.points.append((0, self.world.world_height + 1))
+
+        self.obstacles.append(left_border)
+        self.obstacles.append(right_border)
+        self.obstacles.append(top_border)
+        self.obstacles.append(bottom_border)
+
     def compute_forces(self):
         # This function updates the forces of all agents on the scene according to the obstacles and their current objective.
 
@@ -303,15 +337,20 @@ class Engine:
             driving_force[1] = (a.desired_velocity * agent_direction[1] - a.velocity[1]) / a.reaction_time
 
             obstacle_force = [0, 0]
-             # TODO: Éviterr que la distance passe à zéro pour éviter l'explosion exponentielle
+            # TODO: Éviterr que la distance passe à zéro pour éviter l'explosion exponentielle
             for obstacle in self.obstacles:
                 obstacle_impact_info = nearest_impact_point_polygon(a.pos, obstacle.points)
 
                 obstacle_impact_distance = obstacle_impact_info[0]
+
+                # Avoid excessive interpenetration
+                obstacle_impact_distance = max(obstacle_impact_distance,
+                                               self.world.agent_radius - self.world.contact_tolerance)
+
                 obstacle_impact_point = obstacle_impact_info[1]
 
                 obstacle_agent_direction = normalize(
-                    [a.pos[0] - obstacle_impact_point[0],  a.pos[1] - obstacle_impact_point[1]])
+                    [a.pos[0] - obstacle_impact_point[0], a.pos[1] - obstacle_impact_point[1]])
 
                 # Pushing
                 obstacle_force[0] += (a.repulsion_amplitude * math.exp(
@@ -342,6 +381,10 @@ class Engine:
 
                     radius_agent_and_other = 2 * self.world.agent_radius
 
+                    # Avoid excessive interpenetration
+                    distance_agent_to_other = max(distance_agent_to_other,
+                                                  radius_agent_and_other - self.world.contact_tolerance)
+
                     # Pushing
                     repulsive_force[0] += (a.repulsion_amplitude * math.exp(
                         (radius_agent_and_other - distance_agent_to_other) / a.repulsion_characteristic_distance)
@@ -371,7 +414,6 @@ class Engine:
 
             a.force[0] += driving_force[0] + obstacle_force[0] + repulsive_force[0] + damping_force[0]
             a.force[1] += driving_force[1] + obstacle_force[1] + repulsive_force[1] + damping_force[1]
-            print(a.pos)
             pass
 
     def app_loop(self):

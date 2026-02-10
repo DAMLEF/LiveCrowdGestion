@@ -2,11 +2,12 @@ class World:
     def __init__(self):
         self.meter = 15
 
-        self.agent_radius = 0.65
-        self.agent_speed = 1.4
+        self.agent_radius = 0.65        # In m
 
-        self.world_width = 30
-        self.world_height = 20
+        self.world_width = 30           # In m
+        self.world_height = 20          # In m
+
+        self.contact_tolerance = 0.02    # In m
 
     def pixel_to_world(self, pixel: int) -> float:
         return pixel / self.meter

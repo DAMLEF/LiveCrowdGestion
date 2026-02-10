@@ -45,7 +45,7 @@ class Agent:
         self.acceleration[0] = self.force[0] / self.mass
         self.acceleration[1] = self.force[1] / self.mass
 
-        print("Vitesse : ", math.sqrt(self.velocity[0]**2 + self.velocity[1]**2))
+        # print("Vitesse : ", math.sqrt(self.velocity[0]**2 + self.velocity[1]**2))
 
         self.velocity[0] += self.acceleration[0] * delta_time
         self.velocity[1] += self.acceleration[1] * delta_time
