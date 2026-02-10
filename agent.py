@@ -13,13 +13,13 @@ class Agent:
         # Self properties
         self.mass = 80
 
-        self.reaction_time = 0.0001                       # In sec
+        self.reaction_time = 0.01                       # In sec
         self.desired_velocity = 2.5                     # In m/s (vi0)
 
-        self.repulsion_amplitude = 2000                 # In Newton
-        self.repulsion_characteristic_distance = 0.08   # In meter
+        self.repulsion_amplitude = 1200                 # In Newton
+        self.repulsion_characteristic_distance = 0.12   # In meter
 
-        self.contact_stiffness = 120000                 # In kg/s²
+        self.contact_stiffness = 20000                  # In kg/s²
 
         self.damping_reverse_speed = 4                  # In m/s
         self.gamma_damping = 1000                       # In kg/s

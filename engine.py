@@ -16,10 +16,10 @@ from obstacle import Obstacle
 from agent import Agent
 from objective import Objective
 
+
 # --------------- #
 
 class Engine:
-
     SIZE = (1280, 720)
     FPS = 144
 
@@ -43,9 +43,6 @@ class Engine:
     INPUT_WIDTH_MODE_ITEM = pygame.K_w
     INPUT_HEIGHT_MODE_ITEM = pygame.K_h
 
-
-
-
     def __init__(self):
         self.screen = pygame.display.set_mode(Engine.SIZE)
 
@@ -60,12 +57,16 @@ class Engine:
         self.world = World()
 
         # World Structure
-        self.entrances: list =  []
+        self.entrances: list = []
         self.obstacles: list = []
         self.spawn_points: list = []
         self.objective: Polygon = None
-        self.agents: list = [Agent()]
+        self.agents: list = []
 
+        # Simulation parameters
+        self.agents_to_spawn = 500
+        self.time_between_agent_spawn = 2        # In sec
+        self.last_spawn_time = time.time()
 
         # Editor parameters
         self.edit = True
@@ -77,17 +78,23 @@ class Engine:
         action_objective_placement = lambda: self.set_placement_mode(Objective())
         action_sp_placement = lambda: self.set_placement_mode(Polygon("SP", GOLD))
 
-        self.buttons.append(TextButton(10, 10, 110, 30, "Obstacle", BaseStyle(15, BLACK), "OBSTACLE", action=action_obstacle_placement, reset_input=True))
-        self.buttons.append(TextButton(130, 10, 110, 30, "Entrance", BaseStyle(15, BLACK), "ENTRANCE", action=action_entrance_placement, reset_input=True))
-        self.buttons.append(TextButton(250, 10, 110, 30, "SP", BaseStyle(15, BLACK), "SPAWN POINT", action=action_sp_placement, reset_input=True))
-        self.buttons.append(TextButton(370, 10, 110, 30, "Objective", BaseStyle(15, BLACK), "OBJECTIVE", action=action_objective_placement, reset_input=True))
+        self.buttons.append(
+            TextButton(10, 10, 110, 30, "Obstacle", BaseStyle(15, BLACK), "OBSTACLE", action=action_obstacle_placement,
+                       reset_input=True))
+        self.buttons.append(
+            TextButton(130, 10, 110, 30, "Entrance", BaseStyle(15, BLACK), "ENTRANCE", action=action_entrance_placement,
+                       reset_input=True))
+        self.buttons.append(
+            TextButton(250, 10, 110, 30, "SP", BaseStyle(15, BLACK), "SPAWN POINT", action=action_sp_placement,
+                       reset_input=True))
+        self.buttons.append(TextButton(370, 10, 110, 30, "Objective", BaseStyle(15, BLACK), "OBJECTIVE",
+                                       action=action_objective_placement, reset_input=True))
 
         self.placement: Polygon = None
         self.placement_option = Engine.PLACEMENT_OPTIONS[Engine.PLACEMENT_ROTATION_OPTION]
 
-        self.placement_rotation_speed = 5   # degrees per frame
+        self.placement_rotation_speed = 5  # degrees per frame
         self.placement_length_extension_speed = 2  # degrees per frame
-
 
     def display(self):
         self.screen.fill(WHITE)
@@ -95,7 +102,8 @@ class Engine:
         # Draw of the map boundaries
         world_start_pos = (0, 0)
         world_end_pos = self.world.get_world_size()
-        pygame.draw.rect(self.screen, BLACK, (self.world_to_screen_pos(world_start_pos), self.world.worldVector_to_pixelVector(world_end_pos)), 2)
+        pygame.draw.rect(self.screen, BLACK, (
+            self.world_to_screen_pos(world_start_pos), self.world.worldVector_to_pixelVector(world_end_pos)), 2)
 
         # Draw all entrances
         for entrance in self.entrances:
@@ -122,10 +130,11 @@ class Engine:
 
         # Draw agents
         for agent in self.agents:
-            pygame.draw.circle(self.screen, LIGHT_RED, self.world_to_screen_pos(agent.pos), self.world.agent_radius * self.world.meter)
+            pygame.draw.circle(self.screen, LIGHT_RED, self.world_to_screen_pos(agent.pos),
+                               self.world.agent_radius * self.world.meter)
 
         # TODO : Debug
-        if self.obstacles:
+        if self.obstacles and False:
             obstacles_world_position = self.world_to_screen_list(self.obstacles[0].points)
             d, impact = nearest_impact_point_polygon(self.agents[0].pos, obstacles_world_position)
 
@@ -143,20 +152,24 @@ class Engine:
                 # Draw Interface value
                 ts = BaseStyle(15, LIGHT_GREY)
 
-                self.screen.blit(ts.render(f"WIDTH [{key_input[Engine.INPUT_WIDTH_MODE_ITEM]}] : {round(self.world.pixel_to_world(self.placement.w), 3)} m"), (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.45))
+                self.screen.blit(ts.render(
+                    f"WIDTH [{key_input[Engine.INPUT_WIDTH_MODE_ITEM]}] : {round(self.world.pixel_to_world(self.placement.w), 3)} m"),
+                    (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.45))
                 self.screen.blit(ts.render(
                     f"HEIGHT [{key_input[Engine.INPUT_HEIGHT_MODE_ITEM]}] : {round(self.world.pixel_to_world(self.placement.h), 3)} m"),
-                                 (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.45 + 15))
+                    (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.45 + 15))
                 self.screen.blit(ts.render(
                     f"ROTATION [{key_input[Engine.INPUT_ROTATE_MODE_ITEM]}] : {round(self.world.pixel_to_world(self.placement.angle), 3)} °"),
-                                 (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.45 + 30))
+                    (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.45 + 30))
 
             for button in self.buttons:
                 button.draw(self.screen)
 
             # Draw Graphic scale
-            pygame.draw.rect(self.screen, LIGHT_GREY, (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.95, self.world.meter, 5))
-            self.screen.blit(BaseStyle(10, LIGHT_GREY).render("Meter"), (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.95 + 10))
+            pygame.draw.rect(self.screen, LIGHT_GREY,
+                             (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.95, self.world.meter, 5))
+            self.screen.blit(BaseStyle(10, LIGHT_GREY).render("Meter"),
+                             (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.95 + 10))
 
         pygame.display.flip()
 
@@ -178,12 +191,8 @@ class Engine:
 
         self.camera.move(tuple(camera_vector), self.delta)
 
-
         if self.edit:
             if input_info.get(pygame.K_l):
-                # TODO : Debug
-                self.agents[0].init_agent(self.objective)
-
                 self.edit = False
 
             if self.placement is not None:
@@ -223,13 +232,28 @@ class Engine:
             for button in self.buttons:
                 button.actualise()
         else:
+
+            if len(self.agents) < self.agents_to_spawn:
+                if time.time() - self.last_spawn_time >= self.time_between_agent_spawn:
+                    new_agent = Agent()
+
+                    new_agent.init_agent(self.objective)
+
+                    # TODO : Manage multi Spawn Point
+                    if len(self.spawn_points) > 0:
+                        new_agent.pos = [self.spawn_points[0][0], self.spawn_points[0][1]]
+                    else:
+                        # Agent will spawn in world at position [0, 0]
+                        pass
+
+                    self.agents.append(new_agent)
+
+                    self.last_spawn_time = time.time()
+
             self.compute_forces()
 
             for agent in self.agents:
                 agent.actualise(self.delta)
-
-        # TODO : Debug Section
-        # self.agents[0].pos = [self.mouse_pos[0], self.mouse_pos[1]]
 
         if Engine.FPS_DEBUG:
             pygame.display.set_caption(f"{Engine.WINDOW_NAME} - FPS : {self.clock.get_fps()}")
@@ -275,42 +299,69 @@ class Engine:
             agent_direction = normalize([objective_point[0] - a.pos[0], objective_point[1] - a.pos[1]])
 
             driving_force = [0, 0]
-            driving_force[0] = (a.desired_velocity * agent_direction[0] - a.velocity[0])/a.reaction_time
+            driving_force[0] = (a.desired_velocity * agent_direction[0] - a.velocity[0]) / a.reaction_time
             driving_force[1] = (a.desired_velocity * agent_direction[1] - a.velocity[1]) / a.reaction_time
 
             obstacle_force = [0, 0]
+             # TODO: Éviterr que la distance passe à zéro pour éviter l'explosion exponentielle
             for obstacle in self.obstacles:
                 obstacle_impact_info = nearest_impact_point_polygon(a.pos, obstacle.points)
 
                 obstacle_impact_distance = obstacle_impact_info[0]
                 obstacle_impact_point = obstacle_impact_info[1]
 
-                obstacle_agent_direction = normalize([obstacle_impact_point[0] - a.pos[0], obstacle_impact_point[1] - a.pos[1]])
+                obstacle_agent_direction = normalize(
+                    [a.pos[0] - obstacle_impact_point[0],  a.pos[1] - obstacle_impact_point[1]])
 
                 # Pushing
-                obstacle_force[0] += (a.repulsion_amplitude * math.exp((self.world.agent_radius - obstacle_impact_distance)/a.repulsion_characteristic_distance)
-                                      + a.contact_stiffness * ramp(self.world.agent_radius - obstacle_impact_distance)) * obstacle_agent_direction[0]
-                obstacle_force[1] += (a.repulsion_amplitude * math.exp((self.world.agent_radius - obstacle_impact_distance)/a.repulsion_characteristic_distance)
-                                      + a.contact_stiffness * ramp(self.world.agent_radius - obstacle_impact_distance)) * obstacle_agent_direction[1]
-
+                obstacle_force[0] += (a.repulsion_amplitude * math.exp(
+                    (self.world.agent_radius - obstacle_impact_distance) / a.repulsion_characteristic_distance)
+                                      + a.contact_stiffness * ramp(
+                            self.world.agent_radius - obstacle_impact_distance)) * obstacle_agent_direction[0]
+                obstacle_force[1] += (a.repulsion_amplitude * math.exp(
+                    (self.world.agent_radius - obstacle_impact_distance) / a.repulsion_characteristic_distance)
+                                      + a.contact_stiffness * ramp(
+                            self.world.agent_radius - obstacle_impact_distance)) * obstacle_agent_direction[1]
 
                 # Sliding
                 tangential_oa_direction = normalize([-obstacle_agent_direction[1], obstacle_agent_direction[0]])
                 sliding_dot = dot(a.velocity, tangential_oa_direction)
 
-                print(f"TANGENT : {tangential_oa_direction}")
-
-                obstacle_force[0] += a.sliding_friction_coefficient * ramp(self.world.agent_radius - obstacle_impact_distance) * sliding_dot * tangential_oa_direction[0]
-                obstacle_force[1] += a.sliding_friction_coefficient * ramp(self.world.agent_radius - obstacle_impact_distance) * sliding_dot * tangential_oa_direction[1]
-
-                #print(obstacle_force[0])
-                print(a.sliding_friction_coefficient * ramp(self.world.agent_radius - obstacle_impact_distance) * sliding_dot * tangential_oa_direction[0])
-                print(a.sliding_friction_coefficient * ramp(self.world.agent_radius - obstacle_impact_distance) * sliding_dot * tangential_oa_direction[1])
-
+                obstacle_force[0] -= a.sliding_friction_coefficient * ramp(
+                    self.world.agent_radius - obstacle_impact_distance) * sliding_dot * tangential_oa_direction[0]
+                obstacle_force[1] -= a.sliding_friction_coefficient * ramp(
+                    self.world.agent_radius - obstacle_impact_distance) * sliding_dot * tangential_oa_direction[1]
 
             repulsive_force = [0, 0]
+            for other_agent in self.agents:
+                if other_agent != a:
+                    agent_to_other_direction = [a.pos[0] - other_agent.pos[0], a.pos[1] - other_agent.pos[1]]
+                    distance_agent_to_other = norm(agent_to_other_direction)
 
-            a.force = driving_force
+                    agent_to_other_direction = normalize(agent_to_other_direction)
+
+                    radius_agent_and_other = 2 * self.world.agent_radius
+
+                    # Pushing
+                    repulsive_force[0] += (a.repulsion_amplitude * math.exp(
+                        (radius_agent_and_other - distance_agent_to_other) / a.repulsion_characteristic_distance)
+                                           + a.contact_stiffness * ramp(
+                                radius_agent_and_other - distance_agent_to_other)) * agent_to_other_direction[0]
+                    repulsive_force[1] += (a.repulsion_amplitude * math.exp(
+                        (radius_agent_and_other - distance_agent_to_other) / a.repulsion_characteristic_distance)
+                                           + a.contact_stiffness * ramp(
+                                radius_agent_and_other - distance_agent_to_other)) * agent_to_other_direction[1]
+
+                    # Sliding
+                    tangential_ao_direction = normalize([- agent_to_other_direction[1], agent_to_other_direction[0]])
+                    velocity_difference = [a.velocity[0] - other_agent.velocity[0],
+                                           a.velocity[1] - other_agent.velocity[1]]
+                    sliding_dot = dot(velocity_difference, tangential_ao_direction)
+
+                    repulsive_force[0] -= a.sliding_friction_coefficient * ramp(
+                        radius_agent_and_other - distance_agent_to_other) * sliding_dot * tangential_ao_direction[0]
+                    repulsive_force[1] -= a.sliding_friction_coefficient * ramp(
+                        radius_agent_and_other - distance_agent_to_other) * sliding_dot * tangential_ao_direction[1]
 
             damping_force = [0, 0]
             # TODO
@@ -318,12 +369,10 @@ class Engine:
                 damping_force[0] -= a.gamma_damping * a.velocity[0]
                 damping_force[1] -= a.gamma_damping * a.velocity[1]
 
-
-            a.force[0] += obstacle_force[0]  + damping_force[0]
-            a.force[1] += obstacle_force[1] + damping_force[1]
+            a.force[0] += driving_force[0] + obstacle_force[0] + repulsive_force[0] + damping_force[0]
+            a.force[1] += driving_force[1] + obstacle_force[1] + repulsive_force[1] + damping_force[1]
             print(a.pos)
             pass
-
 
     def app_loop(self):
         running = True
@@ -340,8 +389,3 @@ class Engine:
                     running = False
 
             self.clock.tick(self.fps)
-
-
-
-
-
