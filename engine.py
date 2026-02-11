@@ -43,6 +43,8 @@ class Engine:
     INPUT_WIDTH_MODE_ITEM = pygame.K_w
     INPUT_HEIGHT_MODE_ITEM = pygame.K_h
 
+    INPUT_START_INCIDENT = pygame.K_i
+
     def __init__(self):
         self.screen = pygame.display.set_mode(Engine.SIZE)
 
@@ -64,9 +66,11 @@ class Engine:
         self.agents: list = []
 
         # Simulation parameters
-        self.agents_to_spawn = 500
+        self.agents_to_spawn = 20
         self.time_between_agent_spawn = 2  # In sec
         self.last_spawn_time = time.time()
+
+        self.incident_started = False
 
         # Editor parameters
         self.edit = True
@@ -89,6 +93,10 @@ class Engine:
                        reset_input=True))
         self.buttons.append(TextButton(370, 10, 110, 30, "Objective", BaseStyle(15, BLACK), "OBJECTIVE",
                                        action=action_objective_placement, reset_input=True))
+
+        # Text Zone to manage the World Size
+        self.buttons.append(TextZone(550, 10, 110, 30, "Width World", BaseStyle(15, BLACK), True, False, False))
+        self.buttons.append(TextZone(730, 10, 110, 30, "Height World", BaseStyle(15, BLACK), True, False, False))
 
         self.placement: Polygon = None
         self.placement_option = Engine.PLACEMENT_OPTIONS[Engine.PLACEMENT_ROTATION_OPTION]
@@ -195,6 +203,22 @@ class Engine:
             if input_info.get(pygame.K_l):
                 self.launch_simulation()
 
+            # Actualize World Size
+            if self.buttons[4].valid:
+                try:
+                    self.world.world_width = int(self.buttons[4].entry)
+                except ValueError:
+                    print("[LCG] World Width Size is not a valid number (integer expected)")
+                self.buttons[4].valid = False
+
+            if self.buttons[5].valid:
+                try:
+                    self.world.world_height = int(self.buttons[5].entry)
+                except ValueError:
+                    print("[LCG] World Height Size is not a valid number (integer expected)")
+                self.buttons[5].valid = False
+
+
             if self.placement is not None:
 
                 if input_info.get(Engine.INPUT_ROTATE_MODE_ITEM):
@@ -254,6 +278,9 @@ class Engine:
 
             for agent in self.agents:
                 agent.actualise(self.delta)
+
+            if input_info.get(Engine.INPUT_START_INCIDENT) and not self.incident_started:
+                self.initiate_incident()
 
         if Engine.FPS_DEBUG:
             pygame.display.set_caption(f"{Engine.WINDOW_NAME} - FPS : {self.clock.get_fps()}")
@@ -415,6 +442,30 @@ class Engine:
             a.force[0] += driving_force[0] + obstacle_force[0] + repulsive_force[0] + damping_force[0]
             a.force[1] += driving_force[1] + obstacle_force[1] + repulsive_force[1] + damping_force[1]
             pass
+
+    def initiate_incident(self):
+        self.incident_started = True
+
+        if len(self.entrances) <= 0:
+            print("[LCG] No entrance detected to initiate any incident ")
+            return
+
+        # New Agent objective : Exit
+        for agent in self.agents:
+
+            min_distance = self.world.world_width**2 + self.world.world_height**2
+            nearest_entrance = self.entrances[0]
+
+            for entrance in self.entrances:
+                entrance_distance, entrance_nearest_impact_point = nearest_impact_point_polygon(agent.pos, entrance.points)
+
+                if entrance_distance < min_distance:
+                    min_distance = entrance_distance
+                    nearest_entrance = entrance
+
+            agent.objective = nearest_entrance
+
+
 
     def app_loop(self):
         running = True

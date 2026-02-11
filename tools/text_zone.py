@@ -5,7 +5,7 @@ from tools.button import *
 
 class TextZone(Button):
     def __init__(self, x: float, y: float, width: int, height: int, name: str, style: TextStyle,
-                 display_continuity: bool = True, simple_zone: bool = True, hide_entry: bool = False):
+                 display_continuity: bool = True, simple_zone: bool = True, hide_entry: bool = False, rules: int = 0):
 
         self.writing = False
         self.entry = ""
@@ -24,6 +24,13 @@ class TextZone(Button):
 
         self.simple_zone = simple_zone
 
+        # Rules defines some extra_rules on the text_zone
+        # TODO
+        #self.rules = rules
+        # 0 : Classic System
+        # 1 : Only numbers
+        # 2 : Only letters
+
     def inverse_writing(self):
         self.writing = not self.writing
 
@@ -36,7 +43,7 @@ class TextZone(Button):
         return result
 
     def validation(self):
-        if self.len_without_space() >= 3:
+        if self.len_without_space() > 0:
             self.valid = True
         else:
             pass
@@ -76,7 +83,7 @@ class TextZone(Button):
             render = self.style.render(text[0: self.get_max_in_render()])
         size = render.get_size()
 
-        start_x = self.rect.x + 5
+        start_x = self.rect.x + 7
         start_y = self.rect.y + (abs(self.rect.height - size[1])) // 2
 
         window.blit(render, (start_x, start_y))
@@ -103,6 +110,10 @@ class TextZone(Button):
         self.valid_button.actualise()
 
         super().actualise()
+
+        if input_info["LMB"] and not self.pressed:
+            self.writing = False
+
 
 
 class ConnexionIdZone:
