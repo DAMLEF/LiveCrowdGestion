@@ -45,12 +45,21 @@ class Engine:
 
     INPUT_START_INCIDENT = pygame.K_i
 
+    INPUT_CHANGE_ERASE_MODE = pygame.K_a
+
+    # Image load phase
+    rubber_cursor = pygame.image.load("assets/rubber_cursor.png")
+    rubber_cursor_size = rubber_cursor.get_size()[0]
+
     def __init__(self):
         self.screen = pygame.display.set_mode(Engine.SIZE)
 
         self.clock: pygame.time.Clock = pygame.time.Clock()
         self.fps = Engine.FPS
         self.delta = 0
+
+        # In case of low frame rate simulation, fixed_delta ensures that forces don't go too high
+        self.fixed_delta_simulation = 0.006     # In second
 
         self.mouse_pos = (0, 0)
 
@@ -66,7 +75,7 @@ class Engine:
         self.agents: list = []
 
         # Simulation parameters
-        self.agents_to_spawn = 20
+        self.agents_to_spawn = 200
         self.time_between_agent_spawn = 2  # In sec
         self.last_spawn_time = time.time()
 
@@ -81,6 +90,8 @@ class Engine:
         action_entrance_placement = lambda: self.set_placement_mode(Entrance())
         action_objective_placement = lambda: self.set_placement_mode(Objective())
         action_sp_placement = lambda: self.set_placement_mode(Polygon("SP", GOLD))
+
+        action_erase_mode = lambda: self.change_erase_mode()
 
         self.buttons.append(
             TextButton(10, 10, 110, 30, "Obstacle", BaseStyle(15, BLACK), "OBSTACLE", action=action_obstacle_placement,
@@ -98,11 +109,17 @@ class Engine:
         self.buttons.append(TextZone(550, 10, 110, 30, "Width World", BaseStyle(15, BLACK), True, False, False))
         self.buttons.append(TextZone(730, 10, 110, 30, "Height World", BaseStyle(15, BLACK), True, False, False))
 
+        # Button to erase obstacle / spawn point / objective / ...
+        self.buttons.append(TextButton(900, 10, 110, 30, "Erase", BaseStyle(15, BLACK), "ERASE",
+                                       action=action_erase_mode, reset_input=True))
+
         self.placement: Polygon = None
         self.placement_option = Engine.PLACEMENT_OPTIONS[Engine.PLACEMENT_ROTATION_OPTION]
 
         self.placement_rotation_speed = 5  # degrees per frame
         self.placement_length_extension_speed = 2  # degrees per frame
+
+        self.erase_mode = False
 
     def display(self):
         self.screen.fill(WHITE)
@@ -170,6 +187,12 @@ class Engine:
                     f"ROTATION [{key_input[Engine.INPUT_ROTATE_MODE_ITEM]}] : {round(self.world.pixel_to_world(self.placement.angle), 3)} °"),
                     (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.45 + 30))
 
+            if self.erase_mode:
+                if input_info["LMB"]:
+                    erase_rect_size = Engine.rubber_cursor.get_size()
+
+                    pygame.draw.rect(self.screen, BLACK, (self.mouse_pos[0] - erase_rect_size[0] // 2, self.mouse_pos[1] - erase_rect_size[1] // 2, erase_rect_size[0], erase_rect_size[1]), 3)
+
             for button in self.buttons:
                 button.draw(self.screen)
 
@@ -203,6 +226,10 @@ class Engine:
             if input_info.get(pygame.K_l):
                 self.launch_simulation()
 
+            if input_info.get(Engine.INPUT_CHANGE_ERASE_MODE):
+                self.change_erase_mode()
+                input_info[Engine.INPUT_CHANGE_ERASE_MODE] = False
+
             # Actualize World Size
             if self.buttons[4].valid:
                 try:
@@ -217,7 +244,6 @@ class Engine:
                 except ValueError:
                     print("[LCG] World Height Size is not a valid number (integer expected)")
                 self.buttons[5].valid = False
-
 
             if self.placement is not None:
 
@@ -251,7 +277,59 @@ class Engine:
                         world_pos = self.screen_to_world_pos(self.mouse_pos)
                         self.spawn_points.append((world_pos[0], world_pos[1]))
 
-                    self.placement = None
+                    self.cancel_placement_mode()
+
+            if self.erase_mode:
+                if input_info.get("RMB"):
+                    self.change_erase_mode()
+
+                if input_info.get("LMB"):
+                    _to_delete = []
+
+                    # Erase try of Obstacles
+                    for obstacle in self.obstacles:
+                        obstacle_screen_position = self.world_to_screen_list(obstacle.points)
+                        distance, nearest_impact = nearest_impact_point_polygon(self.mouse_pos,
+                                                                                obstacle_screen_position)
+
+                        if distance <= Engine.rubber_cursor_size // 2:
+                            _to_delete.append(obstacle)
+
+                    for obstacle in _to_delete:
+                        self.obstacles.remove(obstacle)
+
+                    # Erase try of Objective
+                    if self.objective is not None:
+                        distance, nearest_impact = nearest_impact_point_polygon(self.mouse_pos, self.world_to_screen_pos(self.objective.points))
+
+                        if distance <= Engine.rubber_cursor_size // 2:
+                            self.objective = None
+
+                    # Erase try of entrances
+                    _to_delete = []
+                    for entrance in self.obstacles:
+                        entrance_screen_position = self.world_to_screen_list(entrance.points)
+                        distance, nearest_impact = nearest_impact_point_polygon(self.mouse_pos,
+                                                                                entrance_screen_position)
+
+                        if distance <= Engine.rubber_cursor_size // 2:
+                            _to_delete.append(entrance)
+
+                    for entrance in _to_delete:
+                        self.entrances.remove(entrance)
+
+                    # Erase try of spawn point
+                    _to_delete = []
+                    for sp in self.spawn_points:
+                        screen_sp = self.world_to_screen_pos(sp)
+
+                        vector_mouse_sp = [self.mouse_pos[0] - screen_sp[0], self.mouse_pos[1] - screen_sp[1]]
+
+                        if norm(vector_mouse_sp) <= Engine.rubber_cursor_size:
+                            _to_delete.append(sp)
+
+                    for sp in _to_delete:
+                        self.spawn_points.remove(sp)
 
             for button in self.buttons:
                 button.actualise()
@@ -274,10 +352,19 @@ class Engine:
 
                     self.last_spawn_time = time.time()
 
-            self.compute_forces()
+            remaining_effective_time = self.delta
 
-            for agent in self.agents:
-                agent.actualise(self.delta)
+            _sub_step = 0
+
+            while remaining_effective_time >= 0.0015:
+                _sub_step += 1
+
+                self.compute_forces()
+
+                for agent in self.agents:
+                    agent.actualise(self.fixed_delta_simulation)
+
+                remaining_effective_time -= self.fixed_delta_simulation
 
             if input_info.get(Engine.INPUT_START_INCIDENT) and not self.incident_started:
                 self.initiate_incident()
@@ -313,6 +400,29 @@ class Engine:
 
     def set_placement_mode(self, placement_polygon: Polygon):
         self.placement = placement_polygon
+
+        self.change_erase_mode(False)
+
+    def cancel_placement_mode(self):
+        self.placement = None
+
+    def change_erase_mode(self, set_value: bool = None):
+        if set_value is not None:
+            if self.erase_mode == set_value:
+                return
+            self.erase_mode = not set_value
+
+        if self.erase_mode:
+
+            self.cancel_placement_mode()
+
+            self.erase_mode = False
+            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+        else:
+            self.erase_mode = True
+            rubber_cursor = pygame.cursors.Cursor((16, 16), Engine.rubber_cursor)
+
+            pygame.mouse.set_cursor(rubber_cursor)
 
     def launch_simulation(self):
         # We exit the Edit Mode
@@ -453,19 +563,18 @@ class Engine:
         # New Agent objective : Exit
         for agent in self.agents:
 
-            min_distance = self.world.world_width**2 + self.world.world_height**2
+            min_distance = self.world.world_width ** 2 + self.world.world_height ** 2
             nearest_entrance = self.entrances[0]
 
             for entrance in self.entrances:
-                entrance_distance, entrance_nearest_impact_point = nearest_impact_point_polygon(agent.pos, entrance.points)
+                entrance_distance, entrance_nearest_impact_point = nearest_impact_point_polygon(agent.pos,
+                                                                                                entrance.points)
 
                 if entrance_distance < min_distance:
                     min_distance = entrance_distance
                     nearest_entrance = entrance
 
             agent.objective = nearest_entrance
-
-
 
     def app_loop(self):
         running = True
@@ -474,6 +583,9 @@ class Engine:
 
             self.display()
             self.actualise()
+
+            if len(self.agents) % 10 == 0:
+                print(len(self.agents))
 
             for event in pygame.event.get():
                 check_input(event)
