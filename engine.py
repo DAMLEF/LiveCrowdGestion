@@ -469,6 +469,7 @@ class Engine:
             # Normalize direction
             agent_direction = normalize([objective_point[0] - a.pos[0], objective_point[1] - a.pos[1]])
 
+
             driving_force = [0, 0]
             driving_force[0] = (a.desired_velocity * agent_direction[0] - a.velocity[0]) / a.reaction_time
             driving_force[1] = (a.desired_velocity * agent_direction[1] - a.velocity[1]) / a.reaction_time
