@@ -88,6 +88,9 @@ class Engine:
 
         self.spawn_offset = (self.world.agent_radius * 3, self.world.agent_radius * 3)              # In m
 
+        self.escape_final_time = None
+        self.escape_start_time = None
+
         # Editor parameters
         self.edit = True
 
@@ -102,6 +105,8 @@ class Engine:
 
         action_save_world = lambda: self.save_world()
         action_load_world = lambda: self.tk_world_file_loader()
+
+        action_start_sim = lambda: self.launch_simulation()
 
         self.buttons.append(
             TextButton(10, 10, 110, 30, "Obstacle", BaseStyle(15, BLACK), "OBSTACLE", action=action_obstacle_placement,
@@ -128,6 +133,9 @@ class Engine:
                                        action=action_save_world, reset_input=True))
         self.buttons.append(TextButton(1140, 10, 110, 30, "Load World", BaseStyle(15, BLACK), "LOAD",
                                        action=action_load_world, reset_input=True))
+
+        self.buttons.append(TextButton(1140, int(Engine.SIZE[1]*0.9), 110, 30, "START SIMULATION", BaseStyle(15, BLACK), "START",
+                                       action=action_start_sim, reset_input=True))
 
         self.placement: Polygon = None
         self.placement_option = Engine.PLACEMENT_OPTIONS[Engine.PLACEMENT_ROTATION_OPTION]
@@ -447,11 +455,24 @@ class Engine:
         else:
             self.erase_mode = True
             # TODO
-            #rubber_cursor = pygame.cursors.Cursor((16, 16), Engine.rubber_cursor)
+            # rubber_cursor = pygame.cursors.Cursor((16, 16), Engine.rubber_cursor)
 
             pygame.mouse.set_cursor(Engine.rubber_cursor)
 
     def launch_simulation(self):
+
+        if self.objective is None:
+            self.error_system.add_message("[LCG] There is a missing objective for the agents", 4)
+            return
+
+        if not self.spawn_points:
+            self.error_system.add_message("[LCG] There are not enough spawn points for agents.", 4)
+            return
+
+        if not self.entrances:
+            self.error_system.add_message("[LCG] There is a lack of exit points for the agents.", 4)
+            return
+
         # We exit the Edit Mode
         self.edit = False
 
@@ -582,10 +603,13 @@ class Engine:
 
     def initiate_incident(self):
         self.incident_started = True
+        self.escape_start_time = time.time()
+
 
         if len(self.entrances) <= 0:
             print("[LCG] No entrance detected to initiate any incident ")
             return
+
 
         # New Agent objective : Exit
         for agent in self.agents:
