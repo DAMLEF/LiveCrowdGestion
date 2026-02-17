@@ -387,6 +387,7 @@ class Engine:
                     self.last_spawn_time = time.time()
 
             remaining_effective_time = self.delta
+            start_loop_time = time.time()
 
             _sub_step = 0
 
@@ -398,10 +399,15 @@ class Engine:
                 for agent in self.agents:
                     agent.actualise(self.fixed_delta_simulation)
 
+                if self.incident_started:
+                    self.check_end_simulation(start_loop_time - remaining_effective_time)
+
                 remaining_effective_time -= self.fixed_delta_simulation
 
             if input_info.get(Engine.INPUT_START_INCIDENT) and not self.incident_started:
                 self.initiate_incident()
+
+
 
         if Engine.FPS_DEBUG:
             pygame.display.set_caption(f"{Engine.WINDOW_NAME} - FPS : {self.clock.get_fps()}")
@@ -626,6 +632,21 @@ class Engine:
                     nearest_entrance = entrance
 
             agent.objective = nearest_entrance
+
+    def check_end_simulation(self, end_time):
+        simulation_end = False
+
+        for agent in self.agents:
+            distance, nearest_impact_point = nearest_impact_point_polygon(agent.pos, agent.objective.points)
+
+            if distance >= 10 * self.world.agent_radius:
+                return
+
+        print("SIMULATION END")
+        simulation_end = True
+
+        if simulation_end:
+            self.escape_final_time = end_time - self.escape_start_time
 
     def app_loop(self):
         running = True
