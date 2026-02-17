@@ -1,5 +1,8 @@
 # Bibliothèques
+import json
 import math
+import os
+import random
 from typing import List, Tuple
 
 import pygame.draw
@@ -48,8 +51,10 @@ class Engine:
     INPUT_CHANGE_ERASE_MODE = pygame.K_a
 
     # Image load phase
-    rubber_cursor = pygame.image.load("assets/rubber_cursor.png")
-    rubber_cursor_size = rubber_cursor.get_size()[0]
+    # rubber_cursor = pygame.image.load("assets/rubber_cursor.png")
+    rubber_cursor = pygame.SYSTEM_CURSOR_ARROW
+    #rubber_cursor_size = rubber_cursor.get_size()[0]
+    rubber_cursor_size = 32
 
     def __init__(self):
         self.screen = pygame.display.set_mode(Engine.SIZE)
@@ -75,11 +80,13 @@ class Engine:
         self.agents: list = []
 
         # Simulation parameters
-        self.agents_to_spawn = 200
-        self.time_between_agent_spawn = 2  # In sec
+        self.agents_to_spawn = 20
+        self.time_between_agent_spawn = 0.2  # In sec
         self.last_spawn_time = time.time()
 
         self.incident_started = False
+
+        self.spawn_offset = (self.world.agent_radius * 3, self.world.agent_radius * 3)              # In m
 
         # Editor parameters
         self.edit = True
@@ -92,6 +99,8 @@ class Engine:
         action_sp_placement = lambda: self.set_placement_mode(Polygon("SP", GOLD))
 
         action_erase_mode = lambda: self.change_erase_mode()
+
+        action_save_world = lambda: self.save_world()
 
         self.buttons.append(
             TextButton(10, 10, 110, 30, "Obstacle", BaseStyle(15, BLACK), "OBSTACLE", action=action_obstacle_placement,
@@ -112,6 +121,10 @@ class Engine:
         # Button to erase obstacle / spawn point / objective / ...
         self.buttons.append(TextButton(900, 10, 110, 30, "Erase", BaseStyle(15, BLACK), "ERASE",
                                        action=action_erase_mode, reset_input=True))
+
+        # Button to save the world in data file
+        self.buttons.append(TextButton(1020, 10, 110, 30, "Save World", BaseStyle(15, BLACK), "SAVE",
+                                       action=action_save_world, reset_input=True))
 
         self.placement: Polygon = None
         self.placement_option = Engine.PLACEMENT_OPTIONS[Engine.PLACEMENT_ROTATION_OPTION]
@@ -144,8 +157,8 @@ class Engine:
 
         # Draw Objective
         if self.objective is not None:
-            objective_ponts = self.world_to_screen_list(self.objective.points)
-            pygame.draw.polygon(self.screen, self.objective.color, objective_ponts)
+            objective_points = self.world_to_screen_list(self.objective.points)
+            pygame.draw.polygon(self.screen, self.objective.color, objective_points)
 
         # Draw Spawn-Point
         for spawn_point in self.spawn_points:
@@ -189,9 +202,9 @@ class Engine:
 
             if self.erase_mode:
                 if input_info["LMB"]:
-                    erase_rect_size = Engine.rubber_cursor.get_size()
+                    erase_rect_size = Engine.rubber_cursor_size
 
-                    pygame.draw.rect(self.screen, BLACK, (self.mouse_pos[0] - erase_rect_size[0] // 2, self.mouse_pos[1] - erase_rect_size[1] // 2, erase_rect_size[0], erase_rect_size[1]), 3)
+                    pygame.draw.rect(self.screen, BLACK, (self.mouse_pos[0] - erase_rect_size // 2, self.mouse_pos[1] - erase_rect_size // 2, erase_rect_size, erase_rect_size), 3)
 
             for button in self.buttons:
                 button.draw(self.screen)
@@ -343,9 +356,13 @@ class Engine:
 
                     # TODO : Manage multi Spawn Point
                     if len(self.spawn_points) > 0:
-                        new_agent.pos = [self.spawn_points[0][0], self.spawn_points[0][1]]
+
+                        selected_spawn = random.choice(self.spawn_points)
+
+                        new_agent.pos = [selected_spawn[0] + random.uniform(-self.spawn_offset[0], self.spawn_offset[0]), selected_spawn[1] +  + random.uniform(-self.spawn_offset[1], self.spawn_offset[1])]
                     else:
                         # Agent will spawn in world at position [0, 0]
+                        new_agent.pos = [0, 0]
                         pass
 
                     self.agents.append(new_agent)
@@ -420,9 +437,10 @@ class Engine:
             pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
         else:
             self.erase_mode = True
-            rubber_cursor = pygame.cursors.Cursor((16, 16), Engine.rubber_cursor)
+            # TODO
+            #rubber_cursor = pygame.cursors.Cursor((16, 16), Engine.rubber_cursor)
 
-            pygame.mouse.set_cursor(rubber_cursor)
+            pygame.mouse.set_cursor(Engine.rubber_cursor)
 
     def launch_simulation(self):
         # We exit the Edit Mode
@@ -580,13 +598,16 @@ class Engine:
     def app_loop(self):
         running = True
 
+        self.load_world("data/1771331472.json")
+
         while running:
 
             self.display()
             self.actualise()
 
-            if len(self.agents) % 10 == 0:
-                print(len(self.agents))
+            # TODO
+            # if len(self.agents) % 10 == 0:
+            #    print(len(self.agents))
 
             for event in pygame.event.get():
                 check_input(event)
@@ -595,3 +616,70 @@ class Engine:
                     running = False
 
             self.clock.tick(self.fps)
+
+    def save_world(self):
+        """
+        Saves the entire state of the world in a single JSON file.
+        """
+
+        if self.objective is None:
+            self.objective = Objective()
+            self.objective.w = 1
+            self.objective.h = 1
+            self.objective.confirm_position(self.objective.get_rectangle_points(0, 0))
+
+        data_to_save = {
+            "world_size": [self.world.world_width, self.world.world_height],
+            "obstacles": [list(obstacle.points) for obstacle in self.obstacles],
+            "objective": self.objective.points,
+            "entrances": [list(entrance.points) for entrance in self.entrances],
+            "spawn_points": [sp for sp in self.spawn_points],
+        }
+
+        filename = "data/" + str(int(time.time())) + ".json"
+
+        # Create the folder if it does not exist
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+        with open(filename, "w") as f:
+            json.dump(data_to_save, f, indent=4)
+
+    def load_world(self, filename):
+        """
+        Loads the world from a JSON file and restores the full state.
+        """
+
+        with open(filename, "r") as f:
+            data = json.load(f)
+
+
+        self.obstacles = []
+        self.entrances = []
+        self.spawn_points = []
+
+        self.world.world_width = data["world_size"][0]
+        self.world.world_height = data["world_size"][1]
+
+        # Restore obstacle
+        for obstacle in data["obstacles"]:
+            new_obstacle = Obstacle()
+
+            new_obstacle.points = obstacle
+
+            self.obstacles.append(new_obstacle)
+
+        # Restore entrance
+        for entrance in data["entrances"]:
+            new_entrance = Entrance()
+
+            new_entrance.points = entrance
+
+            self.entrances.append(new_entrance)
+
+        # Restore objective
+        self.objective = Objective()
+        self.objective.points = data["objective"]
+
+        # Restore spawn point
+        for sp in data["spawn_points"]:
+            self.spawn_points.append(sp)
