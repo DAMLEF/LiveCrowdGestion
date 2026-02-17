@@ -3,10 +3,9 @@ import json
 import math
 import os
 import random
+import tkinter.filedialog
 from typing import List, Tuple
-
-import pygame.draw
-from PIL.ImageChops import screen
+import tkinter
 
 from entrance import Entrance
 from polygon import Polygon
@@ -18,6 +17,7 @@ from camera import Camera
 from obstacle import Obstacle
 from agent import Agent
 from objective import Objective
+
 
 
 # --------------- #
@@ -101,6 +101,7 @@ class Engine:
         action_erase_mode = lambda: self.change_erase_mode()
 
         action_save_world = lambda: self.save_world()
+        action_load_world = lambda: self.tk_world_file_loader()
 
         self.buttons.append(
             TextButton(10, 10, 110, 30, "Obstacle", BaseStyle(15, BLACK), "OBSTACLE", action=action_obstacle_placement,
@@ -125,6 +126,8 @@ class Engine:
         # Button to save the world in data file
         self.buttons.append(TextButton(1020, 10, 110, 30, "Save World", BaseStyle(15, BLACK), "SAVE",
                                        action=action_save_world, reset_input=True))
+        self.buttons.append(TextButton(1140, 10, 110, 30, "Load World", BaseStyle(15, BLACK), "LOAD",
+                                       action=action_load_world, reset_input=True))
 
         self.placement: Polygon = None
         self.placement_option = Engine.PLACEMENT_OPTIONS[Engine.PLACEMENT_ROTATION_OPTION]
@@ -133,6 +136,9 @@ class Engine:
         self.placement_length_extension_speed = 2  # degrees per frame
 
         self.erase_mode = False
+
+        self.loaded_file = None
+        self.error_system = Error_Message()
 
     def display(self):
         self.screen.fill(WHITE)
@@ -171,13 +177,6 @@ class Engine:
             pygame.draw.circle(self.screen, LIGHT_RED, self.world_to_screen_pos(agent.pos),
                                self.world.agent_radius * self.world.meter)
 
-        # TODO : Debug
-        if self.obstacles and False:
-            obstacles_world_position = self.world_to_screen_list(self.obstacles[0].points)
-            d, impact = nearest_impact_point_polygon(self.agents[0].pos, obstacles_world_position)
-
-            pygame.draw.line(self.screen, GREEN, impact, self.agents[0].pos, 1)
-
         # Edit interface section
         if self.edit:
 
@@ -215,6 +214,9 @@ class Engine:
             self.screen.blit(BaseStyle(10, LIGHT_GREY).render("Meter"),
                              (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.95 + 10))
 
+            # Draw Error System
+            self.error_system.display(self.screen, 10, 150)
+
         pygame.display.flip()
 
     def actualise(self):
@@ -235,13 +237,22 @@ class Engine:
 
         self.camera.move(tuple(camera_vector), self.delta)
 
+        self.error_system.actualise()
+
         if self.edit:
+
             if input_info.get(pygame.K_l):
                 self.launch_simulation()
 
             if input_info.get(Engine.INPUT_CHANGE_ERASE_MODE):
                 self.change_erase_mode()
                 input_info[Engine.INPUT_CHANGE_ERASE_MODE] = False
+
+            # Load a drop file
+            if input_info.get("DROPFILE") and self.loaded_file != input_info["DROPFILE"]:
+                self.load_world(input_info["DROPFILE"])
+
+                self.loaded_file = input_info["DROPFILE"]
 
             # Actualize World Size
             if self.buttons[4].valid:
@@ -354,9 +365,7 @@ class Engine:
 
                     new_agent.init_agent(self.objective)
 
-                    # TODO : Manage multi Spawn Point
                     if len(self.spawn_points) > 0:
-
                         selected_spawn = random.choice(self.spawn_points)
 
                         new_agent.pos = [selected_spawn[0] + random.uniform(-self.spawn_offset[0], self.spawn_offset[0]), selected_spawn[1] +  + random.uniform(-self.spawn_offset[1], self.spawn_offset[1])]
@@ -493,7 +502,6 @@ class Engine:
             driving_force[1] = (a.desired_velocity * agent_direction[1] - a.velocity[1]) / a.reaction_time
 
             obstacle_force = [0, 0]
-            # TODO: Éviterr que la distance passe à zéro pour éviter l'explosion exponentielle
             for obstacle in self.obstacles:
                 obstacle_impact_info = nearest_impact_point_polygon(a.pos, obstacle.points)
 
@@ -562,15 +570,15 @@ class Engine:
                     repulsive_force[1] -= a.sliding_friction_coefficient * ramp(
                         radius_agent_and_other - distance_agent_to_other) * sliding_dot * tangential_ao_direction[1]
 
+
+            # Unactive force to speed up the return at stable speeds
             damping_force = [0, 0]
-            # TODO
             if norm(a.velocity) > a.damping_reverse_speed and False:
                 damping_force[0] -= a.gamma_damping * a.velocity[0]
                 damping_force[1] -= a.gamma_damping * a.velocity[1]
 
             a.force[0] += driving_force[0] + obstacle_force[0] + repulsive_force[0] + damping_force[0]
             a.force[1] += driving_force[1] + obstacle_force[1] + repulsive_force[1] + damping_force[1]
-            pass
 
     def initiate_incident(self):
         self.incident_started = True
@@ -598,16 +606,10 @@ class Engine:
     def app_loop(self):
         running = True
 
-        self.load_world("data/1771331472.json")
-
         while running:
 
             self.display()
             self.actualise()
-
-            # TODO
-            # if len(self.agents) % 10 == 0:
-            #    print(len(self.agents))
 
             for event in pygame.event.get():
                 check_input(event)
@@ -649,37 +651,59 @@ class Engine:
         Loads the world from a JSON file and restores the full state.
         """
 
-        with open(filename, "r") as f:
-            data = json.load(f)
+        error = False
+        try:
+            if not filename.endswith(".json"):
+                raise ValueError("Invalid filename")
+
+            with open(filename, "r") as f:
+                data = json.load(f)
+
+            self.obstacles = []
+            self.entrances = []
+            self.spawn_points = []
+
+            self.world.world_width = data["world_size"][0]
+            self.world.world_height = data["world_size"][1]
+
+            # Restore obstacle
+            for obstacle in data["obstacles"]:
+                new_obstacle = Obstacle()
+
+                new_obstacle.points = obstacle
+
+                self.obstacles.append(new_obstacle)
+
+            # Restore entrance
+            for entrance in data["entrances"]:
+                new_entrance = Entrance()
+
+                new_entrance.points = entrance
+
+                self.entrances.append(new_entrance)
+
+            # Restore objective
+            self.objective = Objective()
+            self.objective.points = data["objective"]
+
+            # Restore spawn point
+            for sp in data["spawn_points"]:
+                self.spawn_points.append(sp)
+        except json.decoder.JSONDecodeError:
+            print("[LCG] Error while loading the JSON file.")
+            error = True
+        except ValueError:
+            print("[LCG] Error while loading the JSON file.")
+            error = True
+        except KeyError:
+            print("[LCG] Error while loading the JSON file.")
+            error = True
+
+        if error:
+            self.error_system.add_message("[LCG] Error while loading the JSON file", 4)
+
+    def tk_world_file_loader(self):
+        file_path = tkinter.filedialog.askopenfilename(title="CHOOSE A FILE", filetypes=[("World File", "*.json")] )
+        self.load_world(file_path)
 
 
-        self.obstacles = []
-        self.entrances = []
-        self.spawn_points = []
-
-        self.world.world_width = data["world_size"][0]
-        self.world.world_height = data["world_size"][1]
-
-        # Restore obstacle
-        for obstacle in data["obstacles"]:
-            new_obstacle = Obstacle()
-
-            new_obstacle.points = obstacle
-
-            self.obstacles.append(new_obstacle)
-
-        # Restore entrance
-        for entrance in data["entrances"]:
-            new_entrance = Entrance()
-
-            new_entrance.points = entrance
-
-            self.entrances.append(new_entrance)
-
-        # Restore objective
-        self.objective = Objective()
-        self.objective.points = data["objective"]
-
-        # Restore spawn point
-        for sp in data["spawn_points"]:
-            self.spawn_points.append(sp)
