@@ -1,5 +1,6 @@
 # Bibliothèques
 import math
+import random
 from typing import List, Tuple
 
 import pygame.draw
@@ -59,7 +60,7 @@ class Engine:
         self.delta = 0
 
         # In case of low frame rate simulation, fixed_delta ensures that forces don't go too high
-        self.fixed_delta_simulation = 0.006     # In second
+        self.fixed_delta_simulation = 0.006  # In second
 
         self.mouse_pos = (0, 0)
 
@@ -75,8 +76,8 @@ class Engine:
         self.agents: list = []
 
         # Simulation parameters
-        self.agents_to_spawn = 200
-        self.time_between_agent_spawn = 2  # In sec
+        self.agents_to_spawn = 50
+        self.time_between_agent_spawn = 1.5  # In sec
         self.last_spawn_time = time.time()
 
         self.incident_started = False
@@ -191,7 +192,9 @@ class Engine:
                 if input_info["LMB"]:
                     erase_rect_size = Engine.rubber_cursor.get_size()
 
-                    pygame.draw.rect(self.screen, BLACK, (self.mouse_pos[0] - erase_rect_size[0] // 2, self.mouse_pos[1] - erase_rect_size[1] // 2, erase_rect_size[0], erase_rect_size[1]), 3)
+                    pygame.draw.rect(self.screen, BLACK, (
+                    self.mouse_pos[0] - erase_rect_size[0] // 2, self.mouse_pos[1] - erase_rect_size[1] // 2,
+                    erase_rect_size[0], erase_rect_size[1]), 3)
 
             for button in self.buttons:
                 button.draw(self.screen)
@@ -300,14 +303,15 @@ class Engine:
 
                     # Erase try of Objective
                     if self.objective is not None:
-                        distance, nearest_impact = nearest_impact_point_polygon(self.mouse_pos, self.world_to_screen_pos(self.objective.points))
+                        distance, nearest_impact = nearest_impact_point_polygon(self.mouse_pos,
+                                                                                self.world_to_screen_list(self.objective.points))
 
                         if distance <= Engine.rubber_cursor_size // 2:
                             self.objective = None
 
                     # Erase try of entrances
                     _to_delete = []
-                    for entrance in self.obstacles:
+                    for entrance in self.entrances:
                         entrance_screen_position = self.world_to_screen_list(entrance.points)
                         distance, nearest_impact = nearest_impact_point_polygon(self.mouse_pos,
                                                                                 entrance_screen_position)
@@ -341,9 +345,9 @@ class Engine:
 
                     new_agent.init_agent(self.objective)
 
-                    # TODO : Manage multi Spawn Point
                     if len(self.spawn_points) > 0:
-                        new_agent.pos = [self.spawn_points[0][0], self.spawn_points[0][1]]
+                        spawn_point = random.choice(self.spawn_points)
+                        new_agent.pos = [spawn_point[0], spawn_point[1]]
                     else:
                         # Agent will spawn in world at position [0, 0]
                         pass
@@ -352,19 +356,10 @@ class Engine:
 
                     self.last_spawn_time = time.time()
 
-            remaining_effective_time = self.delta
+            self.compute_forces()
 
-            _sub_step = 0
-
-            while remaining_effective_time >= 0.0015:
-                _sub_step += 1
-
-                self.compute_forces()
-
-                for agent in self.agents:
-                    agent.actualise(self.fixed_delta_simulation)
-
-                remaining_effective_time -= self.fixed_delta_simulation
+            for agent in self.agents:
+                agent.actualise(self.fixed_delta_simulation)
 
             if input_info.get(Engine.INPUT_START_INCIDENT) and not self.incident_started:
                 self.initiate_incident()
@@ -377,6 +372,7 @@ class Engine:
     def world_to_screen_pos(self, pos: tuple):
         # We take a position in world space (expressed in meters) and map it to screen space for rendering.
         pixel_pos = self.world.worldVector_to_pixelVector(pos)
+        print(pixel_pos)
         return self.camera.apply_offset(pixel_pos)
 
     def world_to_screen_list(self, points: List[tuple]) -> List[tuple]:
@@ -469,13 +465,12 @@ class Engine:
             # Normalize direction
             agent_direction = normalize([objective_point[0] - a.pos[0], objective_point[1] - a.pos[1]])
 
-
             driving_force = [0, 0]
             driving_force[0] = (a.desired_velocity * agent_direction[0] - a.velocity[0]) / a.reaction_time
             driving_force[1] = (a.desired_velocity * agent_direction[1] - a.velocity[1]) / a.reaction_time
 
             obstacle_force = [0, 0]
-            # TODO: Éviterr que la distance passe à zéro pour éviter l'explosion exponentielle
+
             for obstacle in self.obstacles:
                 obstacle_impact_info = nearest_impact_point_polygon(a.pos, obstacle.points)
 
@@ -584,9 +579,6 @@ class Engine:
 
             self.display()
             self.actualise()
-
-            if len(self.agents) % 10 == 0:
-                print(len(self.agents))
 
             for event in pygame.event.get():
                 check_input(event)
