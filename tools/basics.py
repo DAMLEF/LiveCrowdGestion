@@ -62,6 +62,11 @@ def check_input(py_event: pygame.event) -> None:  # For each key pressed, we tur
         input_info["MW"] += py_event.y
         input_info["MW_lastFrame"] = py_event.y
 
+    if py_event.type == pygame.DROPFILE:
+        file_path = py_event.file
+        input_info["DROPFILE"] = file_path
+
+
 def input_is_letters_or_numbers(key: int):
     if key_input.get(key) is not None:
         return True

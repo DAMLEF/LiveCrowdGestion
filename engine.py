@@ -1,10 +1,11 @@
 # Bibliothèques
+import json
 import math
+import os
 import random
+import tkinter.filedialog
 from typing import List, Tuple
-
-import pygame.draw
-from PIL.ImageChops import screen
+import tkinter
 
 from entrance import Entrance
 from polygon import Polygon
@@ -16,6 +17,7 @@ from camera import Camera
 from obstacle import Obstacle
 from agent import Agent
 from objective import Objective
+
 
 
 # --------------- #
@@ -49,8 +51,10 @@ class Engine:
     INPUT_CHANGE_ERASE_MODE = pygame.K_a
 
     # Image load phase
-    rubber_cursor = pygame.image.load("assets/rubber_cursor.png")
-    rubber_cursor_size = rubber_cursor.get_size()[0]
+    # rubber_cursor = pygame.image.load("assets/rubber_cursor.png")
+    rubber_cursor = pygame.SYSTEM_CURSOR_ARROW
+    #rubber_cursor_size = rubber_cursor.get_size()[0]
+    rubber_cursor_size = 32
 
     def __init__(self):
         self.screen = pygame.display.set_mode(Engine.SIZE)
@@ -60,7 +64,7 @@ class Engine:
         self.delta = 0
 
         # In case of low frame rate simulation, fixed_delta ensures that forces don't go too high
-        self.fixed_delta_simulation = 0.006  # In second
+        self.fixed_delta_simulation = 0.006     # In second
 
         self.mouse_pos = (0, 0)
 
@@ -76,11 +80,16 @@ class Engine:
         self.agents: list = []
 
         # Simulation parameters
-        self.agents_to_spawn = 50
-        self.time_between_agent_spawn = 1.5  # In sec
+        self.agents_to_spawn = 20
+        self.time_between_agent_spawn = 0.2  # In sec
         self.last_spawn_time = time.time()
 
         self.incident_started = False
+
+        self.spawn_offset = (self.world.agent_radius * 3, self.world.agent_radius * 3)              # In m
+
+        self.escape_final_time = None
+        self.escape_start_time = None
 
         # Editor parameters
         self.edit = True
@@ -93,6 +102,11 @@ class Engine:
         action_sp_placement = lambda: self.set_placement_mode(Polygon("SP", GOLD))
 
         action_erase_mode = lambda: self.change_erase_mode()
+
+        action_save_world = lambda: self.save_world()
+        action_load_world = lambda: self.tk_world_file_loader()
+
+        action_start_sim = lambda: self.launch_simulation()
 
         self.buttons.append(
             TextButton(10, 10, 110, 30, "Obstacle", BaseStyle(15, BLACK), "OBSTACLE", action=action_obstacle_placement,
@@ -114,6 +128,15 @@ class Engine:
         self.buttons.append(TextButton(900, 10, 110, 30, "Erase", BaseStyle(15, BLACK), "ERASE",
                                        action=action_erase_mode, reset_input=True))
 
+        # Button to save the world in data file
+        self.buttons.append(TextButton(1020, 10, 110, 30, "Save World", BaseStyle(15, BLACK), "SAVE",
+                                       action=action_save_world, reset_input=True))
+        self.buttons.append(TextButton(1140, 10, 110, 30, "Load World", BaseStyle(15, BLACK), "LOAD",
+                                       action=action_load_world, reset_input=True))
+
+        self.buttons.append(TextButton(1140, int(Engine.SIZE[1]*0.9), 110, 30, "START SIMULATION", BaseStyle(15, BLACK), "START",
+                                       action=action_start_sim, reset_input=True))
+
         self.placement: Polygon = None
         self.placement_option = Engine.PLACEMENT_OPTIONS[Engine.PLACEMENT_ROTATION_OPTION]
 
@@ -121,6 +144,9 @@ class Engine:
         self.placement_length_extension_speed = 2  # degrees per frame
 
         self.erase_mode = False
+
+        self.loaded_file = None
+        self.error_system = Error_Message()
 
     def display(self):
         self.screen.fill(WHITE)
@@ -145,8 +171,8 @@ class Engine:
 
         # Draw Objective
         if self.objective is not None:
-            objective_ponts = self.world_to_screen_list(self.objective.points)
-            pygame.draw.polygon(self.screen, self.objective.color, objective_ponts)
+            objective_points = self.world_to_screen_list(self.objective.points)
+            pygame.draw.polygon(self.screen, self.objective.color, objective_points)
 
         # Draw Spawn-Point
         for spawn_point in self.spawn_points:
@@ -158,13 +184,6 @@ class Engine:
         for agent in self.agents:
             pygame.draw.circle(self.screen, LIGHT_RED, self.world_to_screen_pos(agent.pos),
                                self.world.agent_radius * self.world.meter)
-
-        # TODO : Debug
-        if self.obstacles and False:
-            obstacles_world_position = self.world_to_screen_list(self.obstacles[0].points)
-            d, impact = nearest_impact_point_polygon(self.agents[0].pos, obstacles_world_position)
-
-            pygame.draw.line(self.screen, GREEN, impact, self.agents[0].pos, 1)
 
         # Edit interface section
         if self.edit:
@@ -190,11 +209,9 @@ class Engine:
 
             if self.erase_mode:
                 if input_info["LMB"]:
-                    erase_rect_size = Engine.rubber_cursor.get_size()
+                    erase_rect_size = Engine.rubber_cursor_size
 
-                    pygame.draw.rect(self.screen, BLACK, (
-                    self.mouse_pos[0] - erase_rect_size[0] // 2, self.mouse_pos[1] - erase_rect_size[1] // 2,
-                    erase_rect_size[0], erase_rect_size[1]), 3)
+                    pygame.draw.rect(self.screen, BLACK, (self.mouse_pos[0] - erase_rect_size // 2, self.mouse_pos[1] - erase_rect_size // 2, erase_rect_size, erase_rect_size), 3)
 
             for button in self.buttons:
                 button.draw(self.screen)
@@ -204,6 +221,9 @@ class Engine:
                              (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.95, self.world.meter, 5))
             self.screen.blit(BaseStyle(10, LIGHT_GREY).render("Meter"),
                              (Engine.SIZE[0] * 0.05, Engine.SIZE[1] * 0.95 + 10))
+
+            # Draw Error System
+            self.error_system.display(self.screen, 10, 150)
 
         pygame.display.flip()
 
@@ -225,13 +245,22 @@ class Engine:
 
         self.camera.move(tuple(camera_vector), self.delta)
 
+        self.error_system.actualise()
+
         if self.edit:
+
             if input_info.get(pygame.K_l):
                 self.launch_simulation()
 
             if input_info.get(Engine.INPUT_CHANGE_ERASE_MODE):
                 self.change_erase_mode()
                 input_info[Engine.INPUT_CHANGE_ERASE_MODE] = False
+
+            # Load a drop file
+            if input_info.get("DROPFILE") and self.loaded_file != input_info["DROPFILE"]:
+                self.load_world(input_info["DROPFILE"])
+
+                self.loaded_file = input_info["DROPFILE"]
 
             # Actualize World Size
             if self.buttons[4].valid:
@@ -303,15 +332,14 @@ class Engine:
 
                     # Erase try of Objective
                     if self.objective is not None:
-                        distance, nearest_impact = nearest_impact_point_polygon(self.mouse_pos,
-                                                                                self.world_to_screen_list(self.objective.points))
+                        distance, nearest_impact = nearest_impact_point_polygon(self.mouse_pos, self.world_to_screen_pos(self.objective.points))
 
                         if distance <= Engine.rubber_cursor_size // 2:
                             self.objective = None
 
                     # Erase try of entrances
                     _to_delete = []
-                    for entrance in self.entrances:
+                    for entrance in self.obstacles:
                         entrance_screen_position = self.world_to_screen_list(entrance.points)
                         distance, nearest_impact = nearest_impact_point_polygon(self.mouse_pos,
                                                                                 entrance_screen_position)
@@ -346,23 +374,40 @@ class Engine:
                     new_agent.init_agent(self.objective)
 
                     if len(self.spawn_points) > 0:
-                        spawn_point = random.choice(self.spawn_points)
-                        new_agent.pos = [spawn_point[0], spawn_point[1]]
+                        selected_spawn = random.choice(self.spawn_points)
+
+                        new_agent.pos = [selected_spawn[0] + random.uniform(-self.spawn_offset[0], self.spawn_offset[0]), selected_spawn[1] +  + random.uniform(-self.spawn_offset[1], self.spawn_offset[1])]
                     else:
                         # Agent will spawn in world at position [0, 0]
+                        new_agent.pos = [0, 0]
                         pass
 
                     self.agents.append(new_agent)
 
                     self.last_spawn_time = time.time()
 
-            self.compute_forces()
+            remaining_effective_time = self.delta
+            start_loop_time = time.time()
 
-            for agent in self.agents:
-                agent.actualise(self.fixed_delta_simulation)
+            _sub_step = 0
+
+            while remaining_effective_time >= 0.0015:
+                _sub_step += 1
+
+                self.compute_forces()
+
+                for agent in self.agents:
+                    agent.actualise(self.fixed_delta_simulation)
+
+                if self.incident_started:
+                    self.check_end_simulation(start_loop_time - remaining_effective_time)
+
+                remaining_effective_time -= self.fixed_delta_simulation
 
             if input_info.get(Engine.INPUT_START_INCIDENT) and not self.incident_started:
                 self.initiate_incident()
+
+
 
         if Engine.FPS_DEBUG:
             pygame.display.set_caption(f"{Engine.WINDOW_NAME} - FPS : {self.clock.get_fps()}")
@@ -372,7 +417,6 @@ class Engine:
     def world_to_screen_pos(self, pos: tuple):
         # We take a position in world space (expressed in meters) and map it to screen space for rendering.
         pixel_pos = self.world.worldVector_to_pixelVector(pos)
-        print(pixel_pos)
         return self.camera.apply_offset(pixel_pos)
 
     def world_to_screen_list(self, points: List[tuple]) -> List[tuple]:
@@ -416,11 +460,25 @@ class Engine:
             pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
         else:
             self.erase_mode = True
-            rubber_cursor = pygame.cursors.Cursor((16, 16), Engine.rubber_cursor)
+            # TODO
+            # rubber_cursor = pygame.cursors.Cursor((16, 16), Engine.rubber_cursor)
 
-            pygame.mouse.set_cursor(rubber_cursor)
+            pygame.mouse.set_cursor(Engine.rubber_cursor)
 
     def launch_simulation(self):
+
+        if self.objective is None:
+            self.error_system.add_message("[LCG] There is a missing objective for the agents", 4)
+            return
+
+        if not self.spawn_points:
+            self.error_system.add_message("[LCG] There are not enough spawn points for agents.", 4)
+            return
+
+        if not self.entrances:
+            self.error_system.add_message("[LCG] There is a lack of exit points for the agents.", 4)
+            return
+
         # We exit the Edit Mode
         self.edit = False
 
@@ -465,12 +523,12 @@ class Engine:
             # Normalize direction
             agent_direction = normalize([objective_point[0] - a.pos[0], objective_point[1] - a.pos[1]])
 
+
             driving_force = [0, 0]
             driving_force[0] = (a.desired_velocity * agent_direction[0] - a.velocity[0]) / a.reaction_time
             driving_force[1] = (a.desired_velocity * agent_direction[1] - a.velocity[1]) / a.reaction_time
 
             obstacle_force = [0, 0]
-
             for obstacle in self.obstacles:
                 obstacle_impact_info = nearest_impact_point_polygon(a.pos, obstacle.points)
 
@@ -539,22 +597,25 @@ class Engine:
                     repulsive_force[1] -= a.sliding_friction_coefficient * ramp(
                         radius_agent_and_other - distance_agent_to_other) * sliding_dot * tangential_ao_direction[1]
 
+
+            # Unactive force to speed up the return at stable speeds
             damping_force = [0, 0]
-            # TODO
             if norm(a.velocity) > a.damping_reverse_speed and False:
                 damping_force[0] -= a.gamma_damping * a.velocity[0]
                 damping_force[1] -= a.gamma_damping * a.velocity[1]
 
             a.force[0] += driving_force[0] + obstacle_force[0] + repulsive_force[0] + damping_force[0]
             a.force[1] += driving_force[1] + obstacle_force[1] + repulsive_force[1] + damping_force[1]
-            pass
 
     def initiate_incident(self):
         self.incident_started = True
+        self.escape_start_time = time.time()
+
 
         if len(self.entrances) <= 0:
             print("[LCG] No entrance detected to initiate any incident ")
             return
+
 
         # New Agent objective : Exit
         for agent in self.agents:
@@ -572,6 +633,21 @@ class Engine:
 
             agent.objective = nearest_entrance
 
+    def check_end_simulation(self, end_time):
+        simulation_end = False
+
+        for agent in self.agents:
+            distance, nearest_impact_point = nearest_impact_point_polygon(agent.pos, agent.objective.points)
+
+            if distance >= 10 * self.world.agent_radius:
+                return
+
+        print("SIMULATION END")
+        simulation_end = True
+
+        if simulation_end:
+            self.escape_final_time = end_time - self.escape_start_time
+
     def app_loop(self):
         running = True
 
@@ -587,3 +663,92 @@ class Engine:
                     running = False
 
             self.clock.tick(self.fps)
+
+    def save_world(self):
+        """
+        Saves the entire state of the world in a single JSON file.
+        """
+
+        if self.objective is None:
+            self.objective = Objective()
+            self.objective.w = 1
+            self.objective.h = 1
+            self.objective.confirm_position(self.objective.get_rectangle_points(0, 0))
+
+        data_to_save = {
+            "world_size": [self.world.world_width, self.world.world_height],
+            "obstacles": [list(obstacle.points) for obstacle in self.obstacles],
+            "objective": self.objective.points,
+            "entrances": [list(entrance.points) for entrance in self.entrances],
+            "spawn_points": [sp for sp in self.spawn_points],
+        }
+
+        filename = "data/" + str(int(time.time())) + ".json"
+
+        # Create the folder if it does not exist
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+        with open(filename, "w") as f:
+            json.dump(data_to_save, f, indent=4)
+
+    def load_world(self, filename):
+        """
+        Loads the world from a JSON file and restores the full state.
+        """
+
+        error = False
+        try:
+            if not filename.endswith(".json"):
+                raise ValueError("Invalid filename")
+
+            with open(filename, "r") as f:
+                data = json.load(f)
+
+            self.obstacles = []
+            self.entrances = []
+            self.spawn_points = []
+
+            self.world.world_width = data["world_size"][0]
+            self.world.world_height = data["world_size"][1]
+
+            # Restore obstacle
+            for obstacle in data["obstacles"]:
+                new_obstacle = Obstacle()
+
+                new_obstacle.points = obstacle
+
+                self.obstacles.append(new_obstacle)
+
+            # Restore entrance
+            for entrance in data["entrances"]:
+                new_entrance = Entrance()
+
+                new_entrance.points = entrance
+
+                self.entrances.append(new_entrance)
+
+            # Restore objective
+            self.objective = Objective()
+            self.objective.points = data["objective"]
+
+            # Restore spawn point
+            for sp in data["spawn_points"]:
+                self.spawn_points.append(sp)
+        except json.decoder.JSONDecodeError:
+            print("[LCG] Error while loading the JSON file.")
+            error = True
+        except ValueError:
+            print("[LCG] Error while loading the JSON file.")
+            error = True
+        except KeyError:
+            print("[LCG] Error while loading the JSON file.")
+            error = True
+
+        if error:
+            self.error_system.add_message("[LCG] Error while loading the JSON file", 4)
+
+    def tk_world_file_loader(self):
+        file_path = tkinter.filedialog.askopenfilename(title="CHOOSE A FILE", filetypes=[("World File", "*.json")] )
+        self.load_world(file_path)
+
+
