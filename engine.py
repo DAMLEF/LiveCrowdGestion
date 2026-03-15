@@ -51,10 +51,8 @@ class Engine:
     INPUT_CHANGE_ERASE_MODE = pygame.K_a
 
     # Image load phase
-    # rubber_cursor = pygame.image.load("assets/rubber_cursor.png")
-    rubber_cursor = pygame.SYSTEM_CURSOR_ARROW
-    #rubber_cursor_size = rubber_cursor.get_size()[0]
-    rubber_cursor_size = 32
+    rubber_cursor = pygame.image.load("assets/rubber_cursor.png")
+    rubber_cursor_size = rubber_cursor.get_size()[0]
 
     def __init__(self):
         self.screen = pygame.display.set_mode(Engine.SIZE)
@@ -80,16 +78,15 @@ class Engine:
         self.agents: list = []
 
         # Simulation parameters
-        self.agents_to_spawn = 20
-        self.time_between_agent_spawn = 0.2  # In sec
+        self.agents_to_spawn = 10
+        self.time_between_agent_spawn = 1.5  # In sec
         self.last_spawn_time = time.time()
 
         self.incident_started = False
 
         self.spawn_offset = (self.world.agent_radius * 3, self.world.agent_radius * 3)              # In m
 
-        self.escape_final_time = None
-        self.escape_start_time = None
+        self.escape_time_duration = 0
 
         # Editor parameters
         self.edit = True
@@ -332,14 +329,16 @@ class Engine:
 
                     # Erase try of Objective
                     if self.objective is not None:
-                        distance, nearest_impact = nearest_impact_point_polygon(self.mouse_pos, self.world_to_screen_pos(self.objective.points))
+                        objective_screen_position = self.world_to_screen_list(self.objective.points)
+                        distance, nearest_impact = nearest_impact_point_polygon(self.mouse_pos,
+                                                                                objective_screen_position)
 
                         if distance <= Engine.rubber_cursor_size // 2:
                             self.objective = None
 
                     # Erase try of entrances
                     _to_delete = []
-                    for entrance in self.obstacles:
+                    for entrance in self.entrances:
                         entrance_screen_position = self.world_to_screen_list(entrance.points)
                         distance, nearest_impact = nearest_impact_point_polygon(self.mouse_pos,
                                                                                 entrance_screen_position)
@@ -386,28 +385,18 @@ class Engine:
 
                     self.last_spawn_time = time.time()
 
-            remaining_effective_time = self.delta
-            start_loop_time = time.time()
+            self.compute_forces()
 
-            _sub_step = 0
+            for agent in self.agents:
+                agent.actualise(self.fixed_delta_simulation)
 
-            while remaining_effective_time >= 0.0015:
-                _sub_step += 1
+            if self.incident_started:
+                self.escape_time_duration += self.fixed_delta_simulation
 
-                self.compute_forces()
-
-                for agent in self.agents:
-                    agent.actualise(self.fixed_delta_simulation)
-
-                if self.incident_started:
-                    self.check_end_simulation(start_loop_time - remaining_effective_time)
-
-                remaining_effective_time -= self.fixed_delta_simulation
+                self.check_end_simulation(self.escape_time_duration)
 
             if input_info.get(Engine.INPUT_START_INCIDENT) and not self.incident_started:
                 self.initiate_incident()
-
-
 
         if Engine.FPS_DEBUG:
             pygame.display.set_caption(f"{Engine.WINDOW_NAME} - FPS : {self.clock.get_fps()}")
@@ -460,10 +449,9 @@ class Engine:
             pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
         else:
             self.erase_mode = True
-            # TODO
-            # rubber_cursor = pygame.cursors.Cursor((16, 16), Engine.rubber_cursor)
+            rubber_cursor = pygame.cursors.Cursor((16, 16), Engine.rubber_cursor)
 
-            pygame.mouse.set_cursor(Engine.rubber_cursor)
+            pygame.mouse.set_cursor(rubber_cursor)
 
     def launch_simulation(self):
 
@@ -522,7 +510,6 @@ class Engine:
 
             # Normalize direction
             agent_direction = normalize([objective_point[0] - a.pos[0], objective_point[1] - a.pos[1]])
-
 
             driving_force = [0, 0]
             driving_force[0] = (a.desired_velocity * agent_direction[0] - a.velocity[0]) / a.reaction_time
@@ -646,7 +633,7 @@ class Engine:
         simulation_end = True
 
         if simulation_end:
-            self.escape_final_time = end_time - self.escape_start_time
+            print(f"[LCG] L'évacuation a duré : {self.escape_time_duration} secondes")
 
     def app_loop(self):
         running = True
